@@ -13,8 +13,9 @@ class ConfigFRanka(ConfigBase):
     class Sim(ConfigBase.Sim):
         xml_scene_filename = model_directory
         dt = 0.001
-        sim_time = 50
+        sim_time = 100
         sim_mode = "dyn"  # "dyn","kin" 选择是运动学仿真还是动力学仿真 
+        save_to_file = True
 
     class Render(ConfigBase.Render):
         is_render = True        # 是否打开渲染
@@ -161,4 +162,4 @@ class MuJoCoFranka(MuJoCoBase):
 if __name__ == "__main__":
     config = ConfigFRanka()
     Control = MuJoCoFranka(config)
-    Control.simulation()
+    Control.simulation(True, "simulation_results.png")

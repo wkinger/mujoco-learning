@@ -9,6 +9,7 @@ class ConfigBase:
         dt = 0.001
         sim_time = 30
         sim_mode = "kin"  # "dyn", 选择是运动学仿真还是动力学仿真 
+        save_to_file = True
 
     class Render:
         is_render = True        # 是否打开渲染
@@ -35,7 +36,7 @@ class MuJoCoBase:
             self.viewer.opt.frame = mj.mjtFrame.mjFRAME_WORLD
             mj.mjv_defaultFreeCamera(self.model, self.viewer.cam)
 
-    def simulation(self):
+    def simulation(self, save_to_file=False, filename="simulation_results.png"):
         sim_start = time.time()
         while time.time() - sim_start < self._sim_time:
             step_start = time.time()
@@ -61,7 +62,7 @@ class MuJoCoBase:
             self.viewer.close()
 
         # 5. 仿真结束后显示绘图界面
-        self.plotter.plot_after_simulation()
+        self.plotter.plot_after_simulation(save_to_file=save_to_file, filename=filename)
 
     def pre_step(self):
             pass
