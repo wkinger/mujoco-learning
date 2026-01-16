@@ -1,0 +1,25 @@
+bac
+
+.vscode
+.DS_Store
+.nvimlog
+*.swp
+.zed
+__pycache__
+1
+build
+.cache
+*.zip
+*.so
+
+# [spevial]
+save*.json
+*.egg-info
+/tmp
+*.whl
+*.tar.gz
+.eggs
+env
+
+.venv
+*.pdf
