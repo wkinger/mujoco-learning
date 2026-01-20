@@ -81,9 +81,9 @@ def test_ruckig(t_samples, x_samples, dt):
     # 设置初始条件 - 与 test_package.py 相同
     x0 = arr(x_samples[0])
     v0 = arr(0)
-    v_max = arr(3.0)
-    a_max = arr(20.0)
-    j_max = arr(330)
+    v_max = arr(5.0)
+    a_max = arr(10.0)
+    j_max = arr(30)
     fps = 1000. / dt
     
     # 创建 Ruckig 实例
@@ -250,7 +250,7 @@ if __name__ == '__main__':
     N = 10
     delay_count = 3
     DOF = 7
-    # 测试用例2 ：读取文件数据，进行轨迹规划和画图
+    # 测试用例1 ：读取文件数据，进行轨迹规划和画图
     file_path = "trajData_wk-1-1-5.txt"
     positions, velocities = read_trajectory_data(file_path)
     if len(positions) == 0:
@@ -258,15 +258,16 @@ if __name__ == '__main__':
         exit(1)
     print(f"成功读取 {len(positions)} 个数据点")
     # 分析数据
-    traj_list = []
-    velocity_list = []
-    last_p = positions[0, :]
-    last_v = 0.5 * (positions[1, :] - last_p) / dt
     print(f"positions.shape = {positions.shape}, positions[i, :] = {positions[0, :]}")
-
     t_samples = np.arange(len(positions)) * dt / (1000)
 
-    test_ruckig(t_samples, positions[:, 6], dt)
+    # test_ruckig(t_samples, positions[:, 6], dt)
+
+
+    # 测试用例2 自定义轨迹
+    comman_list = np.array([0,1,3,4,3,1,-3,0],dtype=np.float32)
+    t_samples = np.arange(len(comman_list))
+    test_ruckig(t_samples, comman_list, dt)
     
 
 

@@ -1,7 +1,7 @@
-from mujoco_framework import ConfigBase, MuJoCoBase
+from mujoco.mujoco_framework import ConfigBase, MuJoCoBase
 import numpy as np
 
-model_directory =  "/home/kuanwang/workspace/mujoco_ws/mujoco_menagerie-main/universal_robots_ur5e/ur5e.xml"
+model_directory =  "/home/kuanwang/workspace/mujoco_ws/env/mujoco_menagerie-main/universal_robots_ur5e/ur5e.xml"
 
 class ConfigUR5(ConfigBase):
     class Sim(ConfigBase.Sim):

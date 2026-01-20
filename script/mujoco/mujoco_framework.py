@@ -10,6 +10,8 @@ class ConfigBase:
         sim_time = 30
         sim_mode = "kin"  # "dyn", 选择是运动学仿真还是动力学仿真 
         save_to_file = True
+        site_name = "attachment_site" # End-effector site we wish to control.
+        key_name = "home" # home位置
 
     class Render:
         is_render = True        # 是否打开渲染
@@ -28,6 +30,13 @@ class MuJoCoBase:
         # 2. 加载MuJoCo Scene
         self._is_render = cfg.Render.is_render
         self._render_fps = cfg.Render.render_fps
+        # Initial joint configuration saved as a keyframe in the XML file.
+        self.key_id = self.model.key(cfg.Sim.key_name).id
+        self.q0 = self.model.key(cfg.Sim.key_name).qpos
+        # End-effector site we wish to control.
+        self.site_id = self.model.site(cfg.Sim.site_name).id
+        # 初始化机械臂位置，非常重要
+        mj.mj_resetDataKeyframe(self.model, self.data, self.key_id)
         if self._is_render:
             self.viewer = mjv.launch_passive(model=self.model, data=self.data, 
                                             show_left_ui=cfg.Render.show_left_ui,
@@ -35,7 +44,8 @@ class MuJoCoBase:
                                             key_callback=self.keyboard_cb)
             self.viewer.opt.frame = mj.mjtFrame.mjFRAME_WORLD
             mj.mjv_defaultFreeCamera(self.model, self.viewer.cam)
-
+            
+    # 分离 “物理仿真频率” 和 “视觉渲染频率
     def simulation(self, save_to_file=False, filename="simulation_results.png"):
         sim_start = time.time()
         while time.time() - sim_start < self._sim_time:
@@ -72,6 +82,8 @@ class MuJoCoBase:
             mj.mj_forward(self.model, self.data)
         elif self._sim_mode == "dyn":
             mj.mj_step(self.model, self.data)
+            # 该函数是可选的，仅在需要准确获取约束相关的力矩 / 力时调用（如力控、约束力矩分析），普通动力学仿真可省略，
+            # 但加上后能提升约束场景下的力计算精度
             mj.mj_rnePostConstraint(self.model, self.data)
 
     def post_step(self):

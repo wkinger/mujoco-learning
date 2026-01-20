@@ -37,7 +37,7 @@ def main() -> None:
     data = mujoco.MjData(model)
 
     # Enable gravity compensation. Set to 0.0 to disable.
-    model.body_gravcomp[:] = float(gravity_compensation)
+    model.body_gravcomp[:] = float(True)
     model.opt.timestep = dt
 
     # End-effector site we wish to control.
@@ -76,7 +76,7 @@ def main() -> None:
     site_quat = np.zeros(4)
     site_quat_conj = np.zeros(4)
     error_quat = np.zeros(4)
-
+    count = 0
     with mujoco.viewer.launch_passive(
         model=model,
         data=data,
@@ -94,13 +94,14 @@ def main() -> None:
 
         while viewer.is_running():
             step_start = time.time()
-
             # Spatial velocity (aka twist).
             dx = data.mocap_pos[mocap_id] - data.site(site_id).xpos
             twist[:3] = Kpos * dx / integration_dt
             mujoco.mju_mat2Quat(site_quat, data.site(site_id).xmat)
+            # 计算四元数的共轭（逆旋转）
             mujoco.mju_negQuat(site_quat_conj, site_quat)
             mujoco.mju_mulQuat(error_quat, data.mocap_quat[mocap_id], site_quat_conj)
+            # 将四元数误差转换为角速度形式的姿态误差
             mujoco.mju_quat2Vel(twist[3:], error_quat, 1.0)
             twist[3:] *= Kori / integration_dt
 
@@ -125,7 +126,10 @@ def main() -> None:
 
             # Set the control signal and step the simulation.
             data.ctrl[actuator_ids] = q[dof_ids]
+            if count % 500 == 0:
+                print(f"twist: {twist}\n dq {dq}\n q {q}\n targetpos {data.mocap_pos[mocap_id]}")
             mujoco.mj_step(model, data)
+            count += 1
 
             viewer.sync()
             time_until_next_step = dt - (time.time() - step_start)

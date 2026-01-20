@@ -7,7 +7,8 @@ sys.path.append("/home/kuanwang/workspace/mujoco_ws/script/mujoco")
 from mujoco_framework import ConfigBase, MuJoCoBase
 import numpy as np
 # Franka 示教拖动
-model_directory =  "/home/kuanwang/workspace/mujoco_ws/mjctrl/kuka_iiwa_14/scene.xml"
+model_directory = "/home/kuanwang/workspace/mujoco_ws/mjctrl/franka_emika_panda/scene.xml"
+
 
 class ConfigFRanka(ConfigBase):
     class Sim(ConfigBase.Sim):
@@ -16,6 +17,8 @@ class ConfigFRanka(ConfigBase):
         sim_time = 100
         sim_mode = "dyn"  # "dyn","kin" 选择是运动学仿真还是动力学仿真 
         save_to_file = True
+        site_name = "attachment_site" # End-effector site we wish to control.
+        key_name = "home" # home位置
 
     class Render(ConfigBase.Render):
         is_render = True        # 是否打开渲染
@@ -23,40 +26,34 @@ class ConfigFRanka(ConfigBase):
         show_left_ui = True    # 是否打开左右UI界面
         show_right_ui = True   # 是否打开左右UI界面
         
-# Cartesian impedance control gains.
-impedance_pos = np.asarray([100.0, 100.0, 100.0])  # [N/m]
-impedance_ori = np.asarray([50.0, 50.0, 50.0])  # [Nm/rad]
+# Integration timestep in seconds. This corresponds to the amount of time the joint
+# velocities will be integrated for to obtain the desired joint positions.
+integration_dt: float = 0.1
 
-# Joint impedance control gains.
-Kp_null = np.asarray([75.0, 75.0, 75.0, 50.0, 40.0, 25.0, 25.0])
+# Damping term for the pseudoinverse. This is used to prevent joint velocities from
+# becoming too large when the Jacobian is close to singular.
+damping: float = 1e-4
 
-# Damping ratio for both Cartesian and joint impedance control.
-damping_ratio = 1.0
-
-# Gains for the twist computation.
+# Gains for the twist computation. These should be between 0 and 1. 0 means no
+# movement, 1 means move the end-effector to the target in one integration step.
 Kpos: float = 0.95
 Kori: float = 0.95
-
-# Integration timestep in seconds.
-integration_dt: float = 1.0
 
 # Whether to enable gravity compensation.
 gravity_compensation: bool = True
 
+# Simulation timestep in seconds.
+dt: float = 0.002
+
+# Nullspace P gain.
+Kn = np.asarray([10.0, 10.0, 10.0, 10.0, 5.0, 5.0, 5.0])
+
+# Maximum allowable joint velocity in rad/s.
+max_angvel = 0.785
 class MuJoCoFranka(MuJoCoBase):
     def __init__(self, cfg: ConfigFRanka):
         super().__init__(cfg)
-        # Compute damping and stiffness matrices.
-        damping_pos = damping_ratio * 2 * np.sqrt(impedance_pos)
-        damping_ori = damping_ratio * 2 * np.sqrt(impedance_ori)
-        self.Kp = np.concatenate([impedance_pos, impedance_ori], axis=0)
-        self.Kd = np.concatenate([damping_pos, damping_ori], axis=0)
-        self.Kd_null = damping_ratio * 2 * np.sqrt(Kp_null)
-
-        # End-effector site we wish to control.
-        site_name = "attachment_site"
-        self.site_id = self.model.site(site_name).id
-
+        self.model.body_gravcomp[:] = float(gravity_compensation)
         # Get the dof and actuator ids for the joints we wish to control.
         joint_names = [
             "joint1", "joint2", "joint3", "joint4", 
@@ -65,70 +62,62 @@ class MuJoCoFranka(MuJoCoBase):
         self.dof_ids = np.array([self.model.joint(name).id for name in joint_names])
         self.actuator_ids = np.array([self.model.actuator(name).id for name in joint_names])
 
-        # Initial joint configuration saved as a keyframe in the XML file.
-        key_name = "home"
-        self.key_id = self.model.key(key_name).id
-        self.q0 = self.model.key(key_name).qpos
-
         # Mocap body we will control with our mouse.
         mocap_name = "target"
         self.mocap_id = self.model.body(mocap_name).mocapid[0]
 
         # Pre-allocate numpy arrays.
         self.jac = np.zeros((6, self.model.nv))
+        self.diag = damping * np.eye(6)
+        self.eye = np.eye(self.model.nv)
         self.twist = np.zeros(6)
-        self.site_quat = np.zeros(4)
         self.site_quat_conj = np.zeros(4)
         self.error_quat = np.zeros(4)
-        self.M_inv = np.zeros((self.model.nv, self.model.nv))
-        self.Mx = np.zeros((6, 6))
         
         # Additional arrays for data collection
         self.site_quat_temp = np.zeros(4)
         self.mocap_quat_temp = np.zeros(4)
         self.vel_temp = np.zeros(3)  # Temporary array for velocity conversion
-        self.plotter = DataCollector()   
+        self.plotter = DataCollector() 
+        self.count = 0  
 
     def pre_step(self):
-            # Spatial velocity (aka twist).
-            dx = self.data.mocap_pos[self.mocap_id] - self.data.site(self.site_id).xpos
-            self.twist[:3] = Kpos * dx / integration_dt
-            
-            # Convert rotation matrix to quaternion for site
-            mujoco.mju_mat2Quat(self.site_quat, self.data.site(self.site_id).xmat)
-            mujoco.mju_negQuat(self.site_quat_conj, self.site_quat)
-            mujoco.mju_mulQuat(self.error_quat, self.data.mocap_quat[self.mocap_id], self.site_quat_conj)
-            mujoco.mju_quat2Vel(self.twist[3:], self.error_quat, 1.0)
-            self.twist[3:] *= Kori / integration_dt
+        # Spatial velocity (aka twist).
+        dx = self.data.mocap_pos[self.mocap_id] - self.data.site(self.site_id).xpos
+        self.twist[:3] = Kpos * dx / integration_dt
+        mujoco.mju_mat2Quat(self.site_quat_temp, self.data.site(self.site_id).xmat)
+        # 计算四元数的共轭（逆旋转）
+        mujoco.mju_negQuat(self.site_quat_conj, self.site_quat_temp)
+        mujoco.mju_mulQuat(self.error_quat, self.data.mocap_quat[self.mocap_id], self.site_quat_conj)
+        # 将四元数误差转换为角速度形式的姿态误差
+        mujoco.mju_quat2Vel(self.twist[3:], self.error_quat, 1.0)
+        self.twist[3:] *= Kori / integration_dt
 
-            # Compute end-effector Jacobian.
-            mujoco.mj_jacSite(self.model, self.data, self.jac[:3], self.jac[3:], self.site_id)
+        # Jacobian.
+        mujoco.mj_jacSite(self.model, self.data, self.jac[:3], self.jac[3:], self.site_id)
 
-            # Compute the task-space inertia matrix.
-            mujoco.mj_solveM(self.model, self.data, self.M_inv, np.eye(self.model.nv))
-            Mx_inv = self.jac @ self.M_inv @ self.jac.T
-            if abs(np.linalg.det(Mx_inv)) >= 1e-2:
-                Mx = np.linalg.inv(Mx_inv)
-            else:
-                Mx = np.linalg.pinv(Mx_inv, rcond=1e-2)
+        # Damped least squares.
+        dq = self.jac.T @ np.linalg.solve(self.jac @ self.jac.T + self.diag, self.twist)
 
-            # Compute generalized forces.
-            tau = self.jac.T @ Mx @ (self.Kp * self.twist - self.Kd * (self.jac @ self.data.qvel[self.dof_ids]))
+        # Nullspace control biasing joint velocities towards the home configuration.
+        dq += (self.eye - np.linalg.pinv(self.jac) @ self.jac) @ (Kn * (self.q0 - self.data.qpos[self.dof_ids]))
 
-            # Add joint task in nullspace.
-            Jbar = self.M_inv @ self.jac.T @ Mx
-            ddq = Kp_null * (self.q0 - self.data.qpos[self.dof_ids]) - self.Kd_null * self.data.qvel[self.dof_ids]
-            tau += (np.eye(self.model.nv) - self.jac.T @ Jbar.T) @ ddq
+        # Clamp maximum joint velocity.
+        dq_abs_max = np.abs(dq).max()
+        if dq_abs_max > max_angvel:
+            dq *= max_angvel / dq_abs_max
 
-            # Add gravity compensation.
-            if gravity_compensation:
-                tau += self.data.qfrc_bias[self.dof_ids]
-
-            # Set the control signal and step the simulation.
-            # 转矩裁剪，防止失控
-            np.clip(tau, *self.model.actuator_ctrlrange.T, out=tau)
-            self.data.ctrl[self.actuator_ids] = tau[self.actuator_ids]
-            mujoco.mj_step(self.model, self.data)
+        # Integrate joint velocities to obtain joint positions.
+        q = self.data.qpos.copy()  # Note the copy here is important.
+        mujoco.mj_integratePos(self.model, q, dq, integration_dt)
+        np.clip(q, *self.model.jnt_range.T, out=q)
+        if self.count % 500 == 0:
+            print(f"twist: {self.twist}\n dq {dq}\nq {q}\n targetpos {self.data.mocap_pos[self.mocap_id]}")
+        # Set the control signal and step the simulation.
+        if self.count < 1000:
+            q = np.array([-0.05615562 ,-0.18599034 , 0.0523708,  -2.10141468 , 0.01024992,  1.91443829, -0.77720628])
+        self.data.ctrl[self.actuator_ids] = q[self.dof_ids]
+        self.count += 1 
             
     def post_step(self):
         # Data collection for plotting - FIXED VERSION

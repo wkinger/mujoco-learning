@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import copy
 
+epsilon = 1e-10  # 极小值容差
 
 
 class DoubleSCurveTrajectoryGenerator:
@@ -13,13 +14,17 @@ class DoubleSCurveTrajectoryGenerator:
         self.traj_vel = []
         self.traj_acc = []
         self.traj_jerk = []
-        self.lambda_ = 0.999
+        self.lambda_ = 0.95
         self.max_iter = 1000
+        self.still = np.zeros(self.dof, dtype=bool)
         self.reset(q0_in, q1_in, v0_in, v1_in, vmax, vmin, amax, amin, jmax, jmin)
     
     def reset(self, q0_in, q1_in, v0_in, v1_in, vmax, vmin, amax, amin, jmax, jmin):
         # 1. 给定初始条件，做相应转换
         self.sigma = np.array([np.sign(q1_in - q0_in) for q1_in, q0_in in zip(q1_in, q0_in)])
+        for i in range(self.dof):
+            if abs(self.sigma[i]) < epsilon:
+                self.sigma[i] = 1
         self.q0 = [q0_in * sigma for q0_in, sigma in zip(q0_in, self.sigma)]
         self.q1 = [q1_in * sigma for q1_in, sigma in zip(q1_in, self.sigma)]
         self.v0 = [v0_in * sigma for v0_in, sigma in zip(v0_in, self.sigma)]
@@ -42,23 +47,49 @@ class DoubleSCurveTrajectoryGenerator:
         self.v_lim = np.zeros(self.dof)
         self.a_lim_a = np.zeros(self.dof)
         self.a_lim_d = np.zeros(self.dof)
+        self.still = np.zeros(self.dof, dtype=bool)
 
-    def multi_double_s_curve_trajectory(self, dt):
+    def is_valid(self, axis):
+        T_jstar = np.zeros(self.dof)
+        T_jstar[axis] = np.min([np.sqrt(abs(self.v1[axis] - self.v0[axis]) / self.j_max[axis]), self.a_max[axis]/self.j_max[axis]])
+        if T_jstar[axis] < self.a_max[axis]/self.j_max[axis]:
+            if abs(self.q1[axis] - self.q0[axis]) < abs(T_jstar[axis] * (self.v1[axis] + self.v0[axis])) + epsilon:
+                return False
+        else:
+            if abs(self.q1[axis] - self.q0[axis]) < abs((T_jstar[axis] + (self.v1[axis] - self.v0[axis])/self.a_max[axis]) * (self.v1[axis] + self.v0[axis]) / 2) + epsilon:
+                return False
+        return True
+    
+# dt: 离散时间步长 t0: 开始时间 t1: 结束时间
+    def multi_double_s_curve_trajectory(self, dt, t0 = None, t1 = None):
         max_time = 0.
         for i in range(self.dof):
             total_time = self.double_s_curve_trajectory(axis = i)
             if total_time > max_time:
                 max_time = total_time
-            # 初始化空列表来收集所有关节的数据
+        if t0 != None and t1 != None:
+            if t0 >= t1:
+                print("t0 >= t1, invalid input!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                return 0.
+            if t1 - t0 < max_time:
+                print(f"t1 - t0 {t1 - t0} < max_time {max_time}, invalid input!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                return 0.
+        else:
+            t0 = 0.
+            t1 = max_time
+        max_time = t1 - t0
+        print(f"max_time: {max_time}")
+
+        # 初始化空列表来收集所有关节的数据
         all_pos = []
         all_vel = []
         all_acc = []
         all_jerk = []
-        print(f"max_time: {max_time}")
+
         # 为每个关节生成轨迹
         list_length = []
         for axis in range(self.dof):
-            t_list, pos, vel, acc, jerk = self.get_profile(dt, axis, max_time)
+            t_list, pos, vel, acc, jerk = self.get_profile(dt, axis, t0, t1)
             length = len(pos)
             list_length.append(length)  
             print(f"axis: {axis}, length: {length}")
@@ -69,7 +100,7 @@ class DoubleSCurveTrajectoryGenerator:
             all_jerk.append(jerk)
             
         # 使用np.array()直接创建二维数组
-        self.t_list = t_list
+        self.t_list = [t + t0 for t in t_list]
         self.traj_pos = np.array(all_pos)
         self.traj_vel = np.array(all_vel)
         self.traj_acc = np.array(all_acc)
@@ -79,9 +110,13 @@ class DoubleSCurveTrajectoryGenerator:
             
 
     def double_s_curve_trajectory(self, axis):
+        if abs(self.q0[axis] - self.q1[axis]) < epsilon:
+            print(f"q0 and q1 are the same")
+            self.still[axis] = True
+            return self.T[axis]
         # 2. 假设v_max与a_max可达，计算各段时间值
         if (self.v_max[axis] - self.v0[axis]) * self.j_max[axis] < self.a_max[axis] ** 2:
-            print(f"无法达到a_max")
+            print(f"无法达到a_max {self.a_max[axis]}")
             self.T_j1[axis] = np.sqrt((self.v_max[axis] - self.v0[axis]) / self.j_max[axis])
             self.T_a[axis] = 2 * self.T_j1[axis]
         else:
@@ -89,7 +124,7 @@ class DoubleSCurveTrajectoryGenerator:
             self.T_a[axis] = self.T_j1[axis] + (self.v_max[axis] - self.v0[axis]) / self.a_max[axis]
 
         if (self.v_max[axis] - self.v1[axis]) * self.j_max[axis] < self.a_max[axis] ** 2:
-            print(f"无法达到a_min")
+            print(f"无法达到a_min {self.a_min[axis]}")
             self.T_j2[axis] = np.sqrt((self.v_max[axis] - self.v1[axis]) / self.j_max[axis])    
             self.T_d[axis] = 2 * self.T_j2[axis]
         else:
@@ -100,7 +135,7 @@ class DoubleSCurveTrajectoryGenerator:
 
         # 3. 分情况处理
         if self.T_v[axis] > 0:
-            print(f"可以达到v_max")
+            print(f"可以达到v_max {self.v_max[axis]}")
             self.T[axis] = self.T_a[axis] + self.T_d[axis] + self.T_v[axis]
             print(f"Ta = {self.T_a[axis]:.4f}, Tv = {self.T_v[axis]:.4f}, Td = {self.T_d[axis]:.4f}, Tj1 = {self.T_j1[axis]:.4f}, Tj2 = {self.T_j2[axis]:.4f}")
             self.calc_max_vel_and_acc(axis)
@@ -108,7 +143,7 @@ class DoubleSCurveTrajectoryGenerator:
             return self.T[axis]
         
         self.T_v[axis] = 0.
-        print(f"无法达到v_max")
+        print(f"无法达到v_max {self.v_max[axis]}")
         self.T[axis] = self.T_a[axis] + self.T_d[axis] + self.T_v[axis]
         print(f"T = {self.T[axis]:.4f} Ta = {self.T_a[axis]:.4f}, Tv = {self.T_v[axis]:.4f}, Td = {self.T_d[axis]:.4f}, Tj1 = {self.T_j1[axis]:.4f}, Tj2 = {self.T_j2[axis]:.4f}")
         iteration = 0
@@ -175,10 +210,12 @@ class DoubleSCurveTrajectoryGenerator:
         self.a_lim_d[axis] = -self.j_max[axis] * self.T_j2[axis]
         self.v_lim[axis] = self.v0[axis] + (self.T_a[axis] - self.T_j1[axis]) * self.a_lim_a[axis]
 
-    def get_profile(self, dt, axis, T = None):
+    def get_profile(self, dt, axis, t0 = None, t1 = None):
+        if self.still[axis]:
+            self.T[axis] = t1 - t0
         factor = 1.
-        if T != None:
-            factor = self.T[axis] / T
+        if t0 != None and t1 != None:
+            factor = self.T[axis] / (t1 - t0)
             if factor > 1. or factor <= 0.:
                 print(f"factor must be in (0,1]")
                 return None
@@ -189,21 +226,29 @@ class DoubleSCurveTrajectoryGenerator:
         dq_list = []
         ddq_list = []
         dddq_list = []
-        epsilon = 1e-10  # 极小值容差
         while t < self.T[axis] - epsilon:
-            q_t, dq_t, ddq_t, dddq_t = self.get_traj_by_time_scale(t, axis, factor)
+            if self.still:
+                q_t = self.q0[axis]
+                dq_t = ddq_t = dddq_t = 0.
+            else:
+                q_t, dq_t, ddq_t, dddq_t = self.get_traj_by_time_scale(t, axis, factor)
             t_list.append(t / factor)
             q_list.append(q_t)
             dq_list.append(dq_t)
             ddq_list.append(ddq_t)
             dddq_list.append(dddq_t)
             t += dt
-        q_t, dq_t, ddq_t, dddq_t = self.get_traj_by_time_scale(self.T[axis], axis, factor)
+        if self.still:
+            q_t = self.q0[axis]
+            dq_t = ddq_t = dddq_t = 0.
+        else:
+            q_t, dq_t, ddq_t, dddq_t = self.get_traj_by_time_scale(self.T[axis], axis, factor)
         t_list.append(self.T[axis] / factor)
         q_list.append(q_t)
         dq_list.append(dq_t)
         ddq_list.append(ddq_t)
         dddq_list.append(dddq_t)
+        print(f"get_profile t_list len = {len(t_list)}")
         return t_list, q_list, dq_list, ddq_list, dddq_list
     
     def get_traj_by_time_scale(self,t, axis, factor):
@@ -274,7 +319,6 @@ class DoubleSCurveTrajectoryGenerator:
         plt.figure(figsize=(12, 8))
         # 位置
         for i in range(self.dof):
-            print(f"{i} pos pos.shape {pos[i]}")
             plt.plot(t_list, pos[i], linewidth=1.5, label=f'Position {i}')
         plt.xlabel('Time [s]')
         plt.ylabel('Position [a.u.]')
@@ -321,26 +365,203 @@ class DoubleSCurveTrajectoryGenerator:
 # ======================== 测试用例（反向运动重点验证） ========================
 if __name__ == "__main__":
     # 输入v0_in=2 → 校准后v0=-2（因为q1<q0，dir_pos=-1），位置从15→5
-    constrains = np.array(([0,10,3,-2,5,-5,10,-10,30,-30],
-                  [0,10,1,0,5,-5,10,-10,30,-30],
-                  [0,13,1,0,10,-10,10,-10,30,-30],
-                    [30,10,1,0,10,-10,10,-10,30,-30],
-                    [-10,10,1,0,5,-5,10,-10,30,-30],
-                    [0,11,1,0,10,-10,20,-20,30,-30],
-                    [2,10,1,0,10,-10,10,-10,30,-30]
-                    ))
+    constrains = np.array(([0,10,3,-2,  5,-5,10,-10,30,-30],
+                            [0,10,1,0,  5,-5,10,-10,30,-30],
+                            [0,13,1,0,  5,-5,10,-10,30,-30],
+                            [30,10,1,0, 5,-5,10,-10,30,-30],
+                            [-10,10,1,0,5,-5,10,-10,30,-30],
+                            [0,11,1,0,  5,-5,10,-10,30,-30],
+                            [2,10,1,0,  5,-5,10,-10,30,-30]
+                         ), dtype=float)
 
-    planner = DoubleSCurveTrajectoryGenerator(7, constrains[:,0], constrains[:,1], constrains[:,2], constrains[:,3], \
+    # planner = DoubleSCurveTrajectoryGenerator(3, constrains[:,0], constrains[:,1], constrains[:,2], constrains[:,3], \
+    #                 constrains[:,4], constrains[:,5], constrains[:,6], constrains[:,7], constrains[:,8], constrains[:,9])
+    # total_time = planner.multi_double_s_curve_trajectory(0.001, 3, 8)
+    # if total_time > 0:
+    #     t_list = planner.t_list
+    #     pos = planner.traj_pos
+    #     vel = planner.traj_vel
+    #     acc = planner.traj_acc
+    #     jerk = planner.traj_jerk
+    #     print(f"pos {pos.shape} vel {vel.shape} acc {acc.shape} jerk {jerk.shape}")
+    #     planner.plot_all_trajectories(t_list, pos, vel, acc, jerk)
+    #     planner.print_info()
+
+    # 单轴多个中间点轨迹
+    # comman_list = [0,1,3,4,3,1,-3,0]
+    # planner1 = DoubleSCurveTrajectoryGenerator(1, constrains[:,0], constrains[:,1], constrains[:,2], constrains[:,3], \
+    #                 constrains[:,4], constrains[:,5], constrains[:,6], constrains[:,7], constrains[:,8], constrains[:,9])
+    # period = 2.
+    # t = 0
+    # t_list_all = pos_all = vel_all = acc_all = jerk_all = np.empty((1, 0))
+    # h = [0] * len(comman_list)
+    # last_v = 0.
+    # for i in range(len(comman_list)):
+    #     if i == 0 :
+    #         continue
+    #     constrains[0][2] = last_v
+    #     current_p = comman_list[i-1]
+    #     next_p = comman_list[i]
+    #     constrains[0][0] = current_p
+    #     constrains[0][1] = next_p
+    #     if i > 0 and i < len(comman_list)-1:
+    #         h[i] = comman_list[i] - comman_list[i-1]
+    #         h[i+1] = comman_list[i+1] - comman_list[i]
+    #         if np.sign(h[i]) != np.sign(h[i+1]):
+    #             print(f"set vel 0")
+    #             constrains[0][3] = 0.
+    #         else:
+    #             constrains[0][3] = float(next_p - current_p)/period
+    #             print(f"current_p {current_p} next_p {next_p} {float(next_p - current_p)/period}")
+    #             print(f"use heuristic {constrains[0][3]}")
+
+
+    #     if i == len(comman_list) - 1:
+    #         constrains[0][3] = 0.
+    #     last_v = constrains[0][3]
+    #     print(f"input {i}: {constrains[0][0]} {constrains[0][1]} {constrains[0][2]} {constrains[0][3]}")
+    #     planner1.reset(constrains[:,0], constrains[:,1], constrains[:,2], constrains[:,3], \
+    #                 constrains[:,4], constrains[:,5], constrains[:,6], constrains[:,7], constrains[:,8], constrains[:,9])
+    #     total_time = planner1.multi_double_s_curve_trajectory(0.001, t, t + period)
+    #     if total_time <= 0:
+    #         print("第%d个轨迹规划失败"%i)
+    #         break 
+    #     t_list = planner1.t_list
+    #     pos = planner1.traj_pos
+    #     vel = planner1.traj_vel
+    #     acc = planner1.traj_acc
+    #     jerk = planner1.traj_jerk
+
+    #     print(f"pos {pos.shape} vel {vel.shape} acc {acc.shape} jerk {jerk.shape}\n")
+    #             # pos, vel, acc, jerk已经是二维数组，但需要确保形状正确
+    #     # t_list是列表，需要转换为二维数组
+    #     t_list_2d = np.array(t_list).reshape(1, -1)
+    #     if pos.ndim == 1:
+    #         pos_2d = pos.reshape(1, -1)
+    #     else:
+    #         pos_2d = pos
+    #     if vel.ndim == 1:
+    #         vel_2d = vel.reshape(1, -1)
+    #     else:
+    #         vel_2d = vel
+    #     if acc.ndim == 1:
+    #         acc_2d = acc.reshape(1, -1)
+    #     else:
+    #         acc_2d = acc
+    #     if jerk.ndim == 1:
+    #         jerk_2d = jerk.reshape(1, -1)
+    #     else:
+    #         jerk_2d = jerk
+        
+    #     # 使用np.hstack水平连接二维数组
+    #     t_list_all = np.hstack([t_list_all, t_list_2d])
+    #     pos_all = np.hstack([pos_all, pos_2d])
+    #     vel_all = np.hstack([vel_all, vel_2d])
+    #     acc_all = np.hstack([acc_all, acc_2d])
+    #     jerk_all = np.hstack([jerk_all, jerk_2d])
+
+    #     t += period
+    # t_list_1d = t_list_all[0]  # 提取第一行，形状变为(N,)
+    # planner1.plot_all_trajectories(t_list_1d, pos_all, vel_all, acc_all, jerk_all)
+
+# 多轴多点轨迹规划
+    constrains = np.array(([0,10,3,-2,  50,-50,100,-100,300000,-300000],
+                            [0,10,1,0,  50,-50,100,-100,300000,-300000],
+                            [0,13,1,0,  50,-50,100,-100,300000,-300000],
+                            [30,10,1,0, 50,-50,100,-100,300000,-300000],
+                            [-10,10,1,0,50,-50,100,-100,300000,-300000],
+                            [0,11,1,0,  50,-50,100,-100,300000,-300000],
+                            [2,10,1,0,  50,-50,100,-100,300000,-300000]
+                         ), dtype=float)
+    file_path = "trajData_wk-1-1-5.txt"
+    from trajectoryPlan import read_trajectory_data
+    positions, velocities = read_trajectory_data(file_path)
+    if len(positions) == 0:
+        print("错误：未读取到有效数据")
+        exit(1)
+    print(f"成功读取 {len(positions)} 个数据点")
+    comman_list = positions[:, 6]
+    planner1 = DoubleSCurveTrajectoryGenerator(1, constrains[:,0], constrains[:,1], constrains[:,2], constrains[:,3], \
                     constrains[:,4], constrains[:,5], constrains[:,6], constrains[:,7], constrains[:,8], constrains[:,9])
-    total_time = planner.multi_double_s_curve_trajectory(0.001)
-    if total_time > 0:
-        t_list = planner.t_list
-        pos = planner.traj_pos
-        vel = planner.traj_vel
-        acc = planner.traj_acc
-        jerk = planner.traj_jerk
-        print(f"pos {pos.shape} vel {vel.shape} acc {acc.shape} jerk {jerk.shape}")
-        planner.plot_all_trajectories(t_list, pos, vel, acc, jerk)
-        planner.print_info()
+    period = 0.05
+    t = 0
+    t_list_all = pos_all = vel_all = acc_all = jerk_all = np.empty((1, 0))
+    h = [0] * len(comman_list)
+    last_v = 0.
+    for i in range(len(comman_list) ):
+        if i == 0 :
+            continue
+        constrains[0][2] = last_v
+        current_p = comman_list[i-1]
+        next_p = comman_list[i]
+        constrains[0][0] = current_p
+        constrains[0][1] = next_p
+        if i > 0 and i < len(comman_list)-1:
+            h[i] = comman_list[i] - comman_list[i-1]
+            h[i+1] = comman_list[i+1] - comman_list[i]
+            if np.sign(h[i]) != np.sign(h[i+1]):
+                print(f"set vel 0")
+                constrains[0][3] = 0.
+            else:
+                constrains[0][3] = float(next_p - current_p)/period
+                print(f"{i} current_p {current_p} next_p {next_p} {float(next_p - current_p)/period}")
+                print(f"use heuristic {constrains[0][3]}")
 
 
+        if i == len(comman_list) - 1:
+            constrains[0][3] = 0.
+        last_v = constrains[0][3]
+        print(f"input {i}: {constrains[0][0]} {constrains[0][1]} {constrains[0][2]} {constrains[0][3]}")
+        planner1.reset(constrains[:,0], constrains[:,1], constrains[:,2], constrains[:,3], \
+            constrains[:,4], constrains[:,5], constrains[:,6], constrains[:,7], constrains[:,8], constrains[:,9])
+        for i in range(planner1.dof):
+            is_valid = planner1.is_valid(axis = i)
+            if not is_valid or constrains[0][0] - constrains[0][1] < epsilon:
+                print(f"{i} is not valid for given constrains")
+                constrains[i][2] = 0.
+                constrains[i][3] = 0.
+                planner1.reset(constrains[:,0], constrains[:,1], constrains[:,2], constrains[:,3], \
+                            constrains[:,4], constrains[:,5], constrains[:,6], constrains[:,7], constrains[:,8], constrains[:,9])
+            else:
+                print(f"{i} is valid for given constrains")
+        total_time = planner1.multi_double_s_curve_trajectory(0.00001, t, t + period)
+        if total_time <= 0:
+            print("第%d个轨迹规划失败"%i)
+            break 
+        t_list = planner1.t_list
+        pos = planner1.traj_pos
+        vel = planner1.traj_vel
+        acc = planner1.traj_acc
+        jerk = planner1.traj_jerk
+
+        print(f"pos {pos.shape} vel {vel.shape} acc {acc.shape} jerk {jerk.shape}\n")
+                # pos, vel, acc, jerk已经是二维数组，但需要确保形状正确
+        # t_list是列表，需要转换为二维数组
+        t_list_2d = np.array(t_list).reshape(1, -1)
+        if pos.ndim == 1:
+            pos_2d = pos.reshape(1, -1)
+        else:
+            pos_2d = pos
+        if vel.ndim == 1:
+            vel_2d = vel.reshape(1, -1)
+        else:
+            vel_2d = vel
+        if acc.ndim == 1:
+            acc_2d = acc.reshape(1, -1)
+        else:
+            acc_2d = acc
+        if jerk.ndim == 1:
+            jerk_2d = jerk.reshape(1, -1)
+        else:
+            jerk_2d = jerk
+        
+        # 使用np.hstack水平连接二维数组
+        t_list_all = np.hstack([t_list_all, t_list_2d])
+        pos_all = np.hstack([pos_all, pos_2d])
+        vel_all = np.hstack([vel_all, vel_2d])
+        acc_all = np.hstack([acc_all, acc_2d])
+        jerk_all = np.hstack([jerk_all, jerk_2d])
+
+        t += period
+    t_list_1d = t_list_all[0]  # 提取第一行，形状变为(N,)
+    planner1.plot_all_trajectories(t_list_1d, pos_all, vel_all, acc_all, jerk_all)

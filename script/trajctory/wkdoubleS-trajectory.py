@@ -3,19 +3,23 @@ import matplotlib.pyplot as plt
 import numpy as np
 import copy
 
+epsilon = 1e-10  # 极小值容差
 
 
 class DoubleSCurveTrajectoryGenerator:
     def __init__(self, dof, q0_in, q1_in, v0_in, v1_in, vmax, vmin, amax, amin, jmax, jmin):
         self.dof = dof
         self.traj = []
-        self.lambda_ = 0.999
+        self.lambda_ = 0.99
         self.max_iter = 1000
+        self.still = False
         self.reset(q0_in, q1_in, v0_in, v1_in, vmax, vmin, amax, amin, jmax, jmin)
     
     def reset(self, q0_in, q1_in, v0_in, v1_in, vmax, vmin, amax, amin, jmax, jmin):
         # 1. 给定初始条件，做相应转换
         self.sigma = np.sign(q1_in - q0_in)
+        if abs(self.sigma) < epsilon:
+            self.sigma = 1
         self.q0 = q0_in * self.sigma
         self.q1 = q1_in * self.sigma
         self.v0 = v0_in * self.sigma
@@ -38,8 +42,24 @@ class DoubleSCurveTrajectoryGenerator:
         self.v_lim = 0.
         self.a_lim_a = 0.
         self.a_lim_d = 0.
+        self.still = False
+    
+    def is_valid(self):
+        T_jstar = np.zeros(self.dof)
+        T_jstar = np.min([np.sqrt(abs(self.v1 - self.v0) / self.j_max), self.a_max/self.j_max])
+        if T_jstar < self.a_max/self.j_max:
+            if abs(self.q1 - self.q0) < abs(T_jstar * (self.v1 + self.v0)) + epsilon:
+                return False
+        else:
+            if abs(self.q1 - self.q0) < abs((T_jstar + (self.v1 - self.v0)/self.a_max) * (self.v1 + self.v0) / 2) + epsilon:
+                return False
+        return True
 
     def double_s_curve_trajectory(self):
+        if abs(self.q0 - self.q1) < epsilon:
+            print(f"q0 and q1 are the same")
+            self.still = True
+            return self.T
         # 2. 假设v_max与a_max可达，计算各段时间值
         if (self.v_max - self.v0) * self.j_max < self.a_max ** 2:
             print(f"无法达到a_max")
@@ -77,7 +97,7 @@ class DoubleSCurveTrajectoryGenerator:
             if iteration >= self.max_iter:
                 break
             self.calc_traj_para()
-            self.print_info()
+            # self.print_info()
             if self.T_a < 0 or self.T_d < 0:
                 if self.T_a < 0 and self.v0 > self.v1:
                     print("不存在加速段")
@@ -112,7 +132,7 @@ class DoubleSCurveTrajectoryGenerator:
                     break
                 else:
                     iteration += 1
-                    print(f"iteration {iteration} start")
+                    # print(f"iteration {iteration} start")
                     self.a_max *= self.lambda_
                     self.a_min *= self.lambda_
         return self.T
@@ -137,6 +157,8 @@ class DoubleSCurveTrajectoryGenerator:
         self.v_lim = self.v0 + (self.T_a - self.T_j1) * self.a_lim_a
 
     def get_profile(self, dt, T = None):
+        if self.still:
+            self.T = T
         factor = 1.
         if T != None:
             factor = self.T / T
@@ -149,16 +171,23 @@ class DoubleSCurveTrajectoryGenerator:
         dq_list = []
         ddq_list = []
         dddq_list = []
-        epsilon = 1e-10  # 极小值容差
         while t < self.T - epsilon:
-            q_t, dq_t, ddq_t, dddq_t = self.get_traj_by_time_scale(t, factor)
+            if self.still:
+                q_t = self.q0
+                dq_t = ddq_t = dddq_t = 0.
+            else:
+                q_t, dq_t, ddq_t, dddq_t = self.get_traj_by_time_scale(t, factor)
             t_list.append(t / factor)
             q_list.append(q_t)
             dq_list.append(dq_t)
             ddq_list.append(ddq_t)
             dddq_list.append(dddq_t)
             t += dt
-        q_t, dq_t, ddq_t, dddq_t = self.get_traj_by_time_scale(self.T, factor)
+        if self.still:
+            q_t = self.q0
+            dq_t = ddq_t = dddq_t = 0.
+        else:
+            q_t, dq_t, ddq_t, dddq_t = self.get_traj_by_time_scale(self.T, factor)
         t_list.append(self.T / factor)
         q_list.append(q_t)
         dq_list.append(dq_t)
@@ -166,7 +195,7 @@ class DoubleSCurveTrajectoryGenerator:
         dddq_list.append(dddq_t)
         return t_list, q_list, dq_list, ddq_list, dddq_list
     
-    def get_traj_by_time_scale(self,t,factor):
+    def get_traj_by_time_scale(self, t, factor):
         if t >= 0 and t <= self.T_j1:
             q_t = self.q0 + self.v0 * t + (self.j_max * t**3)/6.
             dq_t = self.v0 + (self.j_max * t**2)/2.
@@ -248,7 +277,7 @@ class DoubleSCurveTrajectoryGenerator:
         plt.plot(t_list, vel, 'r-', linewidth=1.5, label='Velocity')
         if len(t_list1) > 0:
             plt.plot(t_list1, vel1, 'r--', linewidth=1.5, label=f'Velocity (scale))')
-        plt.axhline(self.v_lim, color='orange', linestyle='--', alpha=0.5, label=f'Max Vel')
+        # plt.axhline(self.v_lim, color='orange', linestyle='--', alpha=0.5, label=f'Max Vel')
         plt.xlabel('Time [s]')
         plt.ylabel('Velocity [a.u./s]')
         plt.legend()
@@ -258,8 +287,8 @@ class DoubleSCurveTrajectoryGenerator:
         plt.plot(t_list, acc, 'g-', linewidth=1.5, label='Acceleration')
         if len(t_list1) > 0:
             plt.plot(t_list1, acc1, 'g--', linewidth=1.5, label=f'Acceleration (scale))')
-        plt.axhline(self.a_max, color='orange', linestyle='--', alpha=0.5, label=f'Max Acc')
-        plt.axhline(self.a_min, color='purple', linestyle='--', alpha=0.5, label=f'Min Acc')
+        # plt.axhline(self.a_max, color='orange', linestyle='--', alpha=0.5, label=f'Max Acc')
+        # plt.axhline(self.a_min, color='purple', linestyle='--', alpha=0.5, label=f'Min Acc')
         plt.xlabel('Time [s]')
         plt.ylabel('Acceleration [a.u./s²]')
         plt.legend()
@@ -269,8 +298,8 @@ class DoubleSCurveTrajectoryGenerator:
         plt.plot(t_list, jerk, 'm-', linewidth=1.5, label='Jerk')
         if len(t_list1) > 0:
             plt.plot(t_list1, jerk1, 'm--', linewidth=1.5, label=f'Jerk (scale))')
-        plt.axhline(self.j_max, color='orange', linestyle='--', alpha=0.5, label=f'Max Jerk')
-        plt.axhline(self.j_min, color='purple', linestyle='--', alpha=0.5, label=f'Min Jerk')
+        # plt.axhline(self.j_max, color='orange', linestyle='--', alpha=0.5, label=f'Max Jerk')
+        # plt.axhline(self.j_min, color='purple', linestyle='--', alpha=0.5, label=f'Min Jerk')
         plt.xlabel('Time [s]')
         plt.ylabel('Jerk [a.u./s³]')
         plt.legend()
@@ -292,17 +321,15 @@ class DoubleSCurveTrajectoryGenerator:
 # ======================== 测试用例（反向运动重点验证） ========================
 if __name__ == "__main__":
     # 输入v0_in=2 → 校准后v0=-2（因为q1<q0，dir_pos=-1），位置从15→5
-    constrain = [0,10,3,-2,5,-5,10,-10,30,-30]  # 有恒速段 正向
+    constrain = [0,0.,0,0,10,-10,10,-10,30,-30]  # 有恒速段 正向
     # constrain = [10,0,-1,0,5,-5,10,-10,30,-30]  # 有恒速段 反向
     # constrain = [0,10,-3,0,5,-5,10,-10,30,-30]  # 有恒速段 正向 反速度 
     # constrain = [10,0,3,0,5,-5,10,-10,30,-30]  # 有恒速段 反向 反速度 
-
 
     # constrain = [0,10,1,0,10,-10,10,-10,30,-30] # 无恒速段 正向
     # constrain = [10,0,-1,0,10,-10,10,-10,30,-30] # 无恒速段 反向  
     # constrain = [0,10,-2,0,10,-10,10,-10,30,-30] # 无恒速段 正向 反速度
     # constrain = [10,0,2,0,10,-10,10,-10,30,-30] # 无恒速段 反向 反速度
-
 
     # constrain = [0,10,7,0,10,-10,10,-10,30,-30] # 无恒加速段 正向
     # constrain = [10,0,-7,0,10,-10,10,-10,30,-30] # 无恒加速段 反向
@@ -317,21 +344,23 @@ if __name__ == "__main__":
     # constrain = [0,10,3,10,10,-10,10,-10,30,-30] # 仅有加速段 正向 反速度
 
     # constrain = [0,5.77351,0,10,10,-10,10,-10,30,-30] # 非常极限的情况
-
     # constrain = [0,5.77351,0,10,10,-10,10,-10,30,-30] # 非常极限的情况
-
-
-
+    constrain = [0.087266, 0.087266, 0.0, 0.0, 50,-50,100,-100,3000,-3000]  # 有恒速段 正向
 
     planner = DoubleSCurveTrajectoryGenerator(7, constrain[0], constrain[1], constrain[2], constrain[3], \
                     constrain[4], constrain[5], constrain[6], constrain[7], constrain[8], constrain[9])
     total_time = planner.double_s_curve_trajectory()
     planner.print_info()
-    if total_time > 0:
-        t_list, pos, vel, acc, jerk = planner.get_profile(0.01)
-        # t_list1, pos1, vel1, acc1, jerk1 = planner.get_profile(0.01,3)
-        # for i in range(len(t_list)):
-        #     print(f"t = {t_list[i]:.4f}, q = {pos[i]:.4f}, v = {vel[i]:.4f}, a = {acc[i]:.4f}, j = {jerk[i]:.4f}")
-        planner.plot_all_trajectories(t_list, pos, vel, acc, jerk)
+    is_valid = planner.is_valid()
+    if is_valid:
+        print("Trajectory is valid.")
+    else:
+        print("Trajectory is not valid.")
+    t_list, pos, vel, acc, jerk = planner.get_profile(0.001,2)
+    print(f"pos {len(pos)}")
+    # t_list1, pos1, vel1, acc1, jerk1 = planner.get_profile(0.01,3)
+    # for i in range(len(t_list)):
+    #     print(f"t = {t_list[i]:.4f}, q = {pos[i]:.4f}, v = {vel[i]:.4f}, a = {acc[i]:.4f}, j = {jerk[i]:.4f}")
+    planner.plot_all_trajectories(t_list, pos, vel, acc, jerk)
 
 

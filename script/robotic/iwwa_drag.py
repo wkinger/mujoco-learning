@@ -1,12 +1,13 @@
 import mujoco
 import numpy as np
 import sys
-sys.path.append("/home/kuanwang/workspace/mujoco_ws/")
-from util.plot import DataCollector
+sys.path.append("/home/kuanwang/workspace/mujoco_ws/util/")
+from plot import DataCollector
 sys.path.append("/home/kuanwang/workspace/mujoco_ws/script/mujoco")
 from mujoco_framework import ConfigBase, MuJoCoBase
 import numpy as np
 # Franka 示教拖动
+model_directory =  "/home/kuanwang/workspace/mujoco_ws/mjctrl/kuka_iiwa_14/scene.xml"
 model_directory = "/home/kuanwang/workspace/mujoco_ws/mjctrl/franka_emika_panda/scene_tau.xml"
 
 class ConfigFRanka(ConfigBase):
@@ -14,7 +15,7 @@ class ConfigFRanka(ConfigBase):
         xml_scene_filename = model_directory
         dt = 0.001
         sim_time = 100
-        sim_mode = "dyn"  # "dyn","kin" 选择是运动学仿真还是动力学仿真 
+        sim_mode = "kin"  # "dyn","kin" 选择是运动学仿真还是动力学仿真 
         save_to_file = True
 
     class Render(ConfigBase.Render):

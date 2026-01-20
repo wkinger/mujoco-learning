@@ -200,14 +200,13 @@
 
 
   <actuator>
-    <!-- big_joint：自定义分类标签（MuJoCo 不解析），用于区分大 / 小扭矩关节，方便后续代码分组处理 -->
-    <position class="big_joint" name="joint1" joint="joint1" forcerange="-87 87" ctrlrange="-2.8973 2.8973"/>
-    <position class="big_joint" name="joint2" joint="joint2" forcerange="-87 87" ctrlrange="-1.7628 1.7628"/>
-    <position class="big_joint" name="joint3" joint="joint3" forcerange="-87 87" ctrlrange="-2.8973 2.8973"/>
-    <position class="big_joint" name="joint4" joint="joint4" forcerange="-87 87" ctrlrange="-3.0718 -0.0698"/>
-    <position class="small_joint" name="joint5" joint="joint5" forcerange="-12 12" ctrlrange="-2.8973 2.8973"/>
-    <position class="small_joint" name="joint6" joint="joint6" forcerange="-12 12" ctrlrange="-0.0175 3.7525"/>
-    <position class="small_joint" name="joint7" joint="joint7" forcerange="-12 12" ctrlrange="-2.8973 2.8973"/>
+    <motor name="joint1" joint="joint1" ctrlrange="-320 320"/>
+    <motor name="joint2" joint="joint2" ctrlrange="-320 320"/>
+    <motor name="joint3" joint="joint3" ctrlrange="-176 176"/>
+    <motor name="joint4" joint="joint4" ctrlrange="-176 176"/>
+    <motor name="joint5" joint="joint5" ctrlrange="-110 110"/>
+    <motor name="joint6" joint="joint6" ctrlrange="-40 40"/>
+    <motor name="joint7" joint="joint7" ctrlrange="-40 40"/>
   </actuator>
 
   <keyframe>

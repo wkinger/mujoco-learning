@@ -1,9 +1,9 @@
 import mujoco
 import numpy as np
 import sys
-sys.path.append("/home/kuanwang/workspace/mujoco_ws/ulits/")
+sys.path.append("/home/kuanwang/workspace/mujoco_ws/util/")
 from plot import DataCollector
-sys.path.append("/home/kuanwang/workspace/mujoco_ws/script/")
+sys.path.append("/home/kuanwang/workspace/mujoco_ws/script/mujoco")
 from mujoco_framework import ConfigBase, MuJoCoBase
 import numpy as np
 
