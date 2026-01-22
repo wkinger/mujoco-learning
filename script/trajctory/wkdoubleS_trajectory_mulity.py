@@ -227,7 +227,7 @@ class DoubleSCurveTrajectoryGenerator:
         ddq_list = []
         dddq_list = []
         while t < self.T[axis] - epsilon:
-            if self.still:
+            if self.still[axis]:
                 q_t = self.q0[axis]
                 dq_t = ddq_t = dddq_t = 0.
             else:
@@ -238,7 +238,7 @@ class DoubleSCurveTrajectoryGenerator:
             ddq_list.append(ddq_t)
             dddq_list.append(dddq_t)
             t += dt
-        if self.still:
+        if self.still[axis]:
             q_t = self.q0[axis]
             dq_t = ddq_t = dddq_t = 0.
         else:
@@ -374,18 +374,24 @@ if __name__ == "__main__":
                             [2,10,1,0,  5,-5,10,-10,30,-30]
                          ), dtype=float)
 
-    # planner = DoubleSCurveTrajectoryGenerator(3, constrains[:,0], constrains[:,1], constrains[:,2], constrains[:,3], \
-    #                 constrains[:,4], constrains[:,5], constrains[:,6], constrains[:,7], constrains[:,8], constrains[:,9])
-    # total_time = planner.multi_double_s_curve_trajectory(0.001, 3, 8)
-    # if total_time > 0:
-    #     t_list = planner.t_list
-    #     pos = planner.traj_pos
-    #     vel = planner.traj_vel
-    #     acc = planner.traj_acc
-    #     jerk = planner.traj_jerk
-    #     print(f"pos {pos.shape} vel {vel.shape} acc {acc.shape} jerk {jerk.shape}")
-    #     planner.plot_all_trajectories(t_list, pos, vel, acc, jerk)
-    #     planner.print_info()
+    command = np.array([1,1.5,-1,-1.4,-0.4,0.9,-0.5])
+    start = np.array([0, 0, 0, -1.57079, 0, 1.57079, -0.7853])
+    constrains[:,0] = start
+    constrains[:,1] = command
+    constrains[:,2] = np.zeros(7)
+    constrains[:,3] = np.zeros(7)
+    planner = DoubleSCurveTrajectoryGenerator(7, constrains[:,0], constrains[:,1], constrains[:,2], constrains[:,3], \
+                    constrains[:,4], constrains[:,5], constrains[:,6], constrains[:,7], constrains[:,8], constrains[:,9])
+    total_time = planner.multi_double_s_curve_trajectory(0.001, 3, 8)
+    if total_time > 0:
+        t_list = planner.t_list
+        pos = planner.traj_pos
+        vel = planner.traj_vel
+        acc = planner.traj_acc
+        jerk = planner.traj_jerk
+        print(f"pos {pos.shape} vel {vel.shape} acc {acc.shape} jerk {jerk.shape}")
+        planner.plot_all_trajectories(t_list, pos, vel, acc, jerk)
+        planner.print_info()
 
     # 单轴多个中间点轨迹
     # comman_list = [0,1,3,4,3,1,-3,0]
@@ -465,103 +471,103 @@ if __name__ == "__main__":
     # planner1.plot_all_trajectories(t_list_1d, pos_all, vel_all, acc_all, jerk_all)
 
 # 多轴多点轨迹规划
-    constrains = np.array(([0,10,3,-2,  50,-50,100,-100,300000,-300000],
-                            [0,10,1,0,  50,-50,100,-100,300000,-300000],
-                            [0,13,1,0,  50,-50,100,-100,300000,-300000],
-                            [30,10,1,0, 50,-50,100,-100,300000,-300000],
-                            [-10,10,1,0,50,-50,100,-100,300000,-300000],
-                            [0,11,1,0,  50,-50,100,-100,300000,-300000],
-                            [2,10,1,0,  50,-50,100,-100,300000,-300000]
-                         ), dtype=float)
-    file_path = "trajData_wk-1-1-5.txt"
-    from trajectoryPlan import read_trajectory_data
-    positions, velocities = read_trajectory_data(file_path)
-    if len(positions) == 0:
-        print("错误：未读取到有效数据")
-        exit(1)
-    print(f"成功读取 {len(positions)} 个数据点")
-    comman_list = positions[:, 6]
-    planner1 = DoubleSCurveTrajectoryGenerator(1, constrains[:,0], constrains[:,1], constrains[:,2], constrains[:,3], \
-                    constrains[:,4], constrains[:,5], constrains[:,6], constrains[:,7], constrains[:,8], constrains[:,9])
-    period = 0.05
-    t = 0
-    t_list_all = pos_all = vel_all = acc_all = jerk_all = np.empty((1, 0))
-    h = [0] * len(comman_list)
-    last_v = 0.
-    for i in range(len(comman_list) ):
-        if i == 0 :
-            continue
-        constrains[0][2] = last_v
-        current_p = comman_list[i-1]
-        next_p = comman_list[i]
-        constrains[0][0] = current_p
-        constrains[0][1] = next_p
-        if i > 0 and i < len(comman_list)-1:
-            h[i] = comman_list[i] - comman_list[i-1]
-            h[i+1] = comman_list[i+1] - comman_list[i]
-            if np.sign(h[i]) != np.sign(h[i+1]):
-                print(f"set vel 0")
-                constrains[0][3] = 0.
-            else:
-                constrains[0][3] = float(next_p - current_p)/period
-                print(f"{i} current_p {current_p} next_p {next_p} {float(next_p - current_p)/period}")
-                print(f"use heuristic {constrains[0][3]}")
+    # constrains = np.array(([0,10,3,-2,  50,-50,100,-100,300000,-300000],
+    #                         [0,10,1,0,  50,-50,100,-100,300000,-300000],
+    #                         [0,13,1,0,  50,-50,100,-100,300000,-300000],
+    #                         [30,10,1,0, 50,-50,100,-100,300000,-300000],
+    #                         [-10,10,1,0,50,-50,100,-100,300000,-300000],
+    #                         [0,11,1,0,  50,-50,100,-100,300000,-300000],
+    #                         [2,10,1,0,  50,-50,100,-100,300000,-300000]
+    #                      ), dtype=float)
+    # file_path = "trajData_wk-1-1-5.txt"
+    # from trajectoryPlan import read_trajectory_data
+    # positions, velocities = read_trajectory_data(file_path)
+    # if len(positions) == 0:
+    #     print("错误：未读取到有效数据")
+    #     exit(1)
+    # print(f"成功读取 {len(positions)} 个数据点")
+    # comman_list = positions[:, 6]
+    # planner1 = DoubleSCurveTrajectoryGenerator(3, constrains[:,0], constrains[:,1], constrains[:,2], constrains[:,3], \
+    #                 constrains[:,4], constrains[:,5], constrains[:,6], constrains[:,7], constrains[:,8], constrains[:,9])
+    # period = 1
+    # t = 0
+    # t_list_all = pos_all = vel_all = acc_all = jerk_all = np.empty((1, 0))
+    # h = [0] * len(comman_list)
+    # last_v = 0.
+    # for i in range(len(comman_list) ):
+    #     if i == 0 :
+    #         continue
+    #     constrains[0][2] = last_v
+    #     current_p = comman_list[i-1]
+    #     next_p = comman_list[i]
+    #     constrains[0][0] = current_p
+    #     constrains[0][1] = next_p
+    #     if i > 0 and i < len(comman_list)-1:
+    #         h[i] = comman_list[i] - comman_list[i-1]
+    #         h[i+1] = comman_list[i+1] - comman_list[i]
+    #         if np.sign(h[i]) != np.sign(h[i+1]):
+    #             print(f"set vel 0")
+    #             constrains[0][3] = 0.
+    #         else:
+    #             constrains[0][3] = float(next_p - current_p)/period
+    #             print(f"{i} current_p {current_p} next_p {next_p} {float(next_p - current_p)/period}")
+    #             print(f"use heuristic {constrains[0][3]}")
 
 
-        if i == len(comman_list) - 1:
-            constrains[0][3] = 0.
-        last_v = constrains[0][3]
-        print(f"input {i}: {constrains[0][0]} {constrains[0][1]} {constrains[0][2]} {constrains[0][3]}")
-        planner1.reset(constrains[:,0], constrains[:,1], constrains[:,2], constrains[:,3], \
-            constrains[:,4], constrains[:,5], constrains[:,6], constrains[:,7], constrains[:,8], constrains[:,9])
-        for i in range(planner1.dof):
-            is_valid = planner1.is_valid(axis = i)
-            if not is_valid or constrains[0][0] - constrains[0][1] < epsilon:
-                print(f"{i} is not valid for given constrains")
-                constrains[i][2] = 0.
-                constrains[i][3] = 0.
-                planner1.reset(constrains[:,0], constrains[:,1], constrains[:,2], constrains[:,3], \
-                            constrains[:,4], constrains[:,5], constrains[:,6], constrains[:,7], constrains[:,8], constrains[:,9])
-            else:
-                print(f"{i} is valid for given constrains")
-        total_time = planner1.multi_double_s_curve_trajectory(0.00001, t, t + period)
-        if total_time <= 0:
-            print("第%d个轨迹规划失败"%i)
-            break 
-        t_list = planner1.t_list
-        pos = planner1.traj_pos
-        vel = planner1.traj_vel
-        acc = planner1.traj_acc
-        jerk = planner1.traj_jerk
+    #     if i == len(comman_list) - 1:
+    #         constrains[0][3] = 0.
+    #     last_v = constrains[0][3]
+    #     print(f"input {i}: {constrains[0][0]} {constrains[0][1]} {constrains[0][2]} {constrains[0][3]}")
+    #     planner1.reset(constrains[:,0], constrains[:,1], constrains[:,2], constrains[:,3], \
+    #         constrains[:,4], constrains[:,5], constrains[:,6], constrains[:,7], constrains[:,8], constrains[:,9])
+    #     for i in range(planner1.dof):
+    #         is_valid = planner1.is_valid(axis = i)
+    #         if not is_valid or constrains[0][0] - constrains[0][1] < epsilon:
+    #             print(f"{i} is not valid for given constrains")
+    #             constrains[i][2] = 0.
+    #             constrains[i][3] = 0.
+    #             planner1.reset(constrains[:,0], constrains[:,1], constrains[:,2], constrains[:,3], \
+    #                         constrains[:,4], constrains[:,5], constrains[:,6], constrains[:,7], constrains[:,8], constrains[:,9])
+    #         else:
+    #             print(f"{i} is valid for given constrains")
+    #     total_time = planner1.multi_double_s_curve_trajectory(0.00001, t, t + period)
+    #     if total_time <= 0:
+    #         print("第%d个轨迹规划失败"%i)
+    #         break 
+    #     t_list = planner1.t_list
+    #     pos = planner1.traj_pos
+    #     vel = planner1.traj_vel
+    #     acc = planner1.traj_acc
+    #     jerk = planner1.traj_jerk
 
-        print(f"pos {pos.shape} vel {vel.shape} acc {acc.shape} jerk {jerk.shape}\n")
-                # pos, vel, acc, jerk已经是二维数组，但需要确保形状正确
-        # t_list是列表，需要转换为二维数组
-        t_list_2d = np.array(t_list).reshape(1, -1)
-        if pos.ndim == 1:
-            pos_2d = pos.reshape(1, -1)
-        else:
-            pos_2d = pos
-        if vel.ndim == 1:
-            vel_2d = vel.reshape(1, -1)
-        else:
-            vel_2d = vel
-        if acc.ndim == 1:
-            acc_2d = acc.reshape(1, -1)
-        else:
-            acc_2d = acc
-        if jerk.ndim == 1:
-            jerk_2d = jerk.reshape(1, -1)
-        else:
-            jerk_2d = jerk
+    #     print(f"pos {pos.shape} vel {vel.shape} acc {acc.shape} jerk {jerk.shape}\n")
+    #             # pos, vel, acc, jerk已经是二维数组，但需要确保形状正确
+    #     # t_list是列表，需要转换为二维数组
+    #     t_list_2d = np.array(t_list).reshape(1, -1)
+    #     if pos.ndim == 1:
+    #         pos_2d = pos.reshape(1, -1)
+    #     else:
+    #         pos_2d = pos
+    #     if vel.ndim == 1:
+    #         vel_2d = vel.reshape(1, -1)
+    #     else:
+    #         vel_2d = vel
+    #     if acc.ndim == 1:
+    #         acc_2d = acc.reshape(1, -1)
+    #     else:
+    #         acc_2d = acc
+    #     if jerk.ndim == 1:
+    #         jerk_2d = jerk.reshape(1, -1)
+    #     else:
+    #         jerk_2d = jerk
         
-        # 使用np.hstack水平连接二维数组
-        t_list_all = np.hstack([t_list_all, t_list_2d])
-        pos_all = np.hstack([pos_all, pos_2d])
-        vel_all = np.hstack([vel_all, vel_2d])
-        acc_all = np.hstack([acc_all, acc_2d])
-        jerk_all = np.hstack([jerk_all, jerk_2d])
+    #     # 使用np.hstack水平连接二维数组
+    #     t_list_all = np.hstack([t_list_all, t_list_2d])
+    #     pos_all = np.hstack([pos_all, pos_2d])
+    #     vel_all = np.hstack([vel_all, vel_2d])
+    #     acc_all = np.hstack([acc_all, acc_2d])
+    #     jerk_all = np.hstack([jerk_all, jerk_2d])
 
-        t += period
-    t_list_1d = t_list_all[0]  # 提取第一行，形状变为(N,)
-    planner1.plot_all_trajectories(t_list_1d, pos_all, vel_all, acc_all, jerk_all)
+    #     t += period
+    # t_list_1d = t_list_all[0]  # 提取第一行，形状变为(N,)
+    # planner1.plot_all_trajectories(t_list_1d, pos_all, vel_all, acc_all, jerk_all)

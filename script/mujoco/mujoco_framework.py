@@ -46,7 +46,7 @@ class MuJoCoBase:
             mj.mjv_defaultFreeCamera(self.model, self.viewer.cam)
             
     # 分离 “物理仿真频率” 和 “视觉渲染频率
-    def simulation(self, save_to_file=False, filename="simulation_results.png"):
+    def simulation(self):
         sim_start = time.time()
         while time.time() - sim_start < self._sim_time:
             step_start = time.time()
@@ -71,7 +71,7 @@ class MuJoCoBase:
         if self._is_render:
             self.viewer.close()
 
-        # 5. 仿真结束后显示绘图界面
+    def plot(self, save_to_file=False, filename="simulation_results.png"):       # 5. 仿真结束后显示绘图界面
         self.plotter.plot_after_simulation(save_to_file=save_to_file, filename=filename)
 
     def pre_step(self):

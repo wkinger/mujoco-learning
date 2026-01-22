@@ -52,6 +52,7 @@ class DoubleSCurveTrajectoryGenerator:
         self.time_cur = 0.
         self.time_stamp = 0
         self.time_stage2 = 0.
+        self.time_max_vel = 0.
         self.start_stage2 = False
         self.reach_max_vel = False
         self.still = False
@@ -73,7 +74,7 @@ class DoubleSCurveTrajectoryGenerator:
                 - self.j_min * (self.a1**2 + 2 * self.j_max * (self.dq_k - self.v1)))
             self.T_j2a = -(self.ddq_k/self.j_min) + np.sqrt(value)/(self.j_min * (self.j_min - self.j_max))
             self.T_j2b = self.a1/self.j_max + np.sqrt(value)/(self.j_max * (self.j_max - self.j_min))
-        self.T_d = self.T_j2a + self.T_j2b
+            self.T_d = self.T_j2a + self.T_j2b
         if not self.start_stage2:
            self.h_k = (self.ddq_k * self.T_d**2)/2 + (self.j_min * self.T_j2a * (3 * self.T_d**2 \
             - 3 * self.T_j2a * self.T_d + self.T_j2a**2) + self.j_max * self.T_j2b**3)/6 + self.T_d * self.dq_k
@@ -87,7 +88,10 @@ class DoubleSCurveTrajectoryGenerator:
                 self.dddq_k = self.j_min
             if crition >= self.v_max and self.ddq_k <= 0:
                 self.dddq_k = 0
-                self.reach_max_vel = True
+                if not self.reach_max_vel:
+                    self.time_max_vel = self.time_stamp
+                    self.reach_max_vel = True
+                print("reach max vel")
             print(f"第一阶段 crition {crition:.4f} hk {self.h_k:.4f}  q1 - qk {self.q1 - self.q_k:.4f} q1 {self.q1:.4f} qk {self.q_k:.4f}")
         else:
             if self.start_stage2 == False:
@@ -119,9 +123,9 @@ class DoubleSCurveTrajectoryGenerator:
     def print_info(self):
         print(f"print trajectory info:")
         print(f"q0 = {self.q0:.4f}, q1 = {self.q1:.4f}, v0 = {self.v0:.4f}, v1 = {self.v1:.4f} a0 = {self.a0:.4f} a1 = {self.a1:.4f}")
-        print(f"T = {self.T:.4f}, Td = {self.T_d:.4f}, Tj2a = {self.T_j2a:.4f}, Tj2b = {self.T_j2b:.4f} time_stage2 {self.time_stage2}")
+        print(f"T = {self.T:.4f}, Td = {self.T_d:.4f}, Tj2a = {self.T_j2a:.4f}, Tj2b = {self.T_j2b:.4f} \
+              time_max_vel {self.time_max_vel * self.T_s:.4f} time_stage2 {self.time_stage2 * self.T_s:.4f}")
         print(f"vmax = {self.v_max:.4f}, vmin = {self.v_min:.4f}, a_max = {self.a_max:.4f}, a_min = {self.a_min:.4f}, jmax = {self.j_max:.4f}, jmin = {self.j_min:.4f}")
-
 
     def plot_all_trajectories(self, t_list, pos, vel, acc, jerk, t_list1=[], pos1=[], vel1=[], acc1=[], jerk1=[]):
         # 7. 绘图
@@ -186,7 +190,7 @@ class DoubleSCurveTrajectoryGenerator:
 # ======================== 测试用例（反向运动重点验证） ========================
 if __name__ == "__main__":
     # 输入v0_in=2 → 校准后v0=-2（因为q1<q0，dir_pos=-1），位置从15→5
-    constrain = [0,10.,1,0,1,0,5,-5,10,-8,30,-40]  # 有恒速段 正向
+    constrain = [0,20.,0,0,1,0,5,-5,10,-8,30,-40]  # 有恒速段 正向
 
     dof = 7
     T_s = 0.001
@@ -201,8 +205,8 @@ if __name__ == "__main__":
     while planner.stop == False:
         time_cur, q_k, dq_k, ddq_k, dddq_k = planner.double_s_curve_trajectory()
         print(f"{count} time: {time_cur:.4f}, q: {q_k:.4f}, dq: {dq_k:.4f}, ddq: {ddq_k:.4f}, dddq: {dddq_k:.4f}\n")
-        # if q_k >= constrain[1]:
-        #     break
+        if q_k >= constrain[1]:
+            break
         t_list.append(time_cur)
         q_list.append(q_k)
         dq_list.append(dq_k)

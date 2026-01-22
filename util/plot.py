@@ -3,6 +3,31 @@ matplotlib.use('Agg')  # 使用非交互式后端
 import matplotlib.pyplot as plt
 import numpy as np
 
+# 读取txt文件数据并绘制轨迹和速度曲线
+
+def read_trajectory_data(file_path):
+    """
+    读取轨迹数据文件
+    每行包含14个数据：前7个是关节位置，后7个是关节速度
+    """
+    positions = []
+    velocities = []
+    
+    with open(file_path, 'r') as file:
+        for line in file:
+            # 分割每行的数据
+            data = line.strip().split()
+            if len(data) == 14:
+                # 前7个是关节位置
+                joint_pos = [float(x) for x in data[:7]]
+                # 后7个是关节速度
+                joint_vel = [float(x) for x in data[7:]]
+                
+                positions.append(joint_pos)
+                velocities.append(joint_vel)
+    
+    return np.array(positions), np.array(velocities)
+
 class DataCollector:
     def __init__(self):
         # 数据收集容器
@@ -40,7 +65,7 @@ class DataCollector:
             ax = axs[row, col]
             
             ax.plot(self.timestamps, actual_pose_array[:, i], 'b-', label='Actual', linewidth=2)
-            ax.plot(self.timestamps, desired_pose_array[:, i], 'r--', label='Desired', linewidth=2)
+            ax.plot(self.timestamps, desired_pose_array[:, i], 'r-', label='Desired', linewidth=2)
             
             title = f"{name.upper()} Tracking"
             ax.set_title(title)

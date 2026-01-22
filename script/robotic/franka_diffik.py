@@ -151,4 +151,5 @@ class MuJoCoFranka(MuJoCoBase):
 if __name__ == "__main__":
     config = ConfigFRanka()
     Control = MuJoCoFranka(config)
-    Control.simulation(True, "simulation_results.png")
+    Control.simulation()
+    Control.plot(True, "simulation_results.png")

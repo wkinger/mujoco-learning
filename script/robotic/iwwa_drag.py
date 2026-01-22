@@ -15,7 +15,7 @@ class ConfigFRanka(ConfigBase):
         xml_scene_filename = model_directory
         dt = 0.001
         sim_time = 100
-        sim_mode = "kin"  # "dyn","kin" 选择是运动学仿真还是动力学仿真 
+        sim_mode = "dyn"  # "dyn","kin" 选择是运动学仿真还是动力学仿真 
         save_to_file = True
 
     class Render(ConfigBase.Render):
@@ -89,7 +89,7 @@ class MuJoCoFranka(MuJoCoBase):
         self.mocap_quat_temp = np.zeros(4)
         self.vel_temp = np.zeros(3)  # Temporary array for velocity conversion
         self.plotter = DataCollector()   
-
+        self.ref_rot = self.data.site(self.site_id).xmat.copy()
     def pre_step(self):
             # Spatial velocity (aka twist).
             dx = self.data.mocap_pos[self.mocap_id] - self.data.site(self.site_id).xpos
@@ -101,7 +101,7 @@ class MuJoCoFranka(MuJoCoBase):
             mujoco.mju_mulQuat(self.error_quat, self.data.mocap_quat[self.mocap_id], self.site_quat_conj)
             mujoco.mju_quat2Vel(self.twist[3:], self.error_quat, 1.0)
             self.twist[3:] *= Kori / integration_dt
-
+            # self.twist = np.zeros(6)
             # Compute end-effector Jacobian.
             mujoco.mj_jacSite(self.model, self.data, self.jac[:3], self.jac[3:], self.site_id)
 
@@ -162,4 +162,4 @@ class MuJoCoFranka(MuJoCoBase):
 if __name__ == "__main__":
     config = ConfigFRanka()
     Control = MuJoCoFranka(config)
-    Control.simulation(True, "simulation_results.png")
+    Control.simulation()
