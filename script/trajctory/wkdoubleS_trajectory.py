@@ -318,6 +318,159 @@ class DoubleSCurveTrajectoryGenerator:
             'total_time': t_list,
         }
 
+    def calculate_differential_velocity(self, t_list, pos_list): 
+        """ 计算差分速度（数值微分速度）
+        参数:
+            t_list: 时间序列
+            pos_list: 位置序列
+            
+        返回:
+            diff_vel: 差分速度序列
+        """
+        if len(t_list) < 2:
+            return []
+        
+        diff_vel = []
+        n = len(t_list)
+        
+        # 使用中心差分法计算速度（更精确）
+        for i in range(n):
+            if i == 0:
+                # 前向差分
+                dt = t_list[1] - t_list[0]
+                if dt > 0:
+                    diff_vel.append((pos_list[1] - pos_list[0]) / dt)
+                else:
+                    diff_vel.append(0.0)
+            elif i == n - 1:
+                # 后向差分
+                dt = t_list[-1] - t_list[-2]
+                if dt > 0:
+                    diff_vel.append((pos_list[-1] - pos_list[-2]) / dt)
+                else:
+                    diff_vel.append(0.0)
+            else:
+                # 中心差分（更精确）
+                dt_forward = t_list[i] - t_list[i-1]
+                dt_backward = t_list[i+1] - t_list[i]
+                if dt_forward > 0 and dt_backward > 0:
+                    # 加权平均
+                    weight_forward = dt_backward / (dt_forward + dt_backward)
+                    weight_backward = dt_forward / (dt_forward + dt_backward)
+                    vel_forward = (pos_list[i] - pos_list[i-1]) / dt_forward
+                    vel_backward = (pos_list[i+1] - pos_list[i]) / dt_backward
+                    diff_vel.append(weight_forward * vel_forward + weight_backward * vel_backward)
+                else:
+                    diff_vel.append(0.0)
+        return diff_vel
+    def compare_velocities(self, t_list, pos_list, theoretical_vel_list):
+        """
+        比较理论速度和差分速度
+        
+        参数:
+            t_list: 时间序列
+            pos_list: 位置序列
+            theoretical_vel_list: 理论速度序列
+            
+        返回:
+            comparison_dict: 包含比较结果的字典
+        """
+        # 计算差分速度
+        diff_vel = self.calculate_differential_velocity(t_list, pos_list)
+        
+        if len(diff_vel) != len(theoretical_vel_list):
+            print("警告：差分速度和理论速度序列长度不一致")
+            min_len = min(len(diff_vel), len(theoretical_vel_list))
+            diff_vel = diff_vel[:min_len]
+            theoretical_vel_list = theoretical_vel_list[:min_len]
+            t_list = t_list[:min_len]
+        
+        # 计算误差
+        errors = []
+        relative_errors = []
+        for i in range(len(diff_vel)):
+            error = abs(diff_vel[i] - theoretical_vel_list[i])
+            errors.append(error)
+            if abs(theoretical_vel_list[i]) > 1e-10:  # 避免除以0
+                relative_error = error / abs(theoretical_vel_list[i]) * 100
+            else:
+                relative_error = 0.0
+            relative_errors.append(relative_error)
+        
+        # 统计信息
+        max_error = max(errors) if errors else 0.0
+        avg_error = sum(errors) / len(errors) if errors else 0.0
+        max_relative_error = max(relative_errors) if relative_errors else 0.0
+        avg_relative_error = sum(relative_errors) / len(relative_errors) if relative_errors else 0.0
+        
+        return {
+            'time': t_list,
+            'theoretical_velocity': theoretical_vel_list,
+            'differential_velocity': diff_vel,
+            'absolute_errors': errors,
+            'relative_errors_percent': relative_errors,
+            'max_absolute_error': max_error,
+            'average_absolute_error': avg_error,
+            'max_relative_error_percent': max_relative_error,
+            'average_relative_error_percent': avg_relative_error
+        }
+
+    def plot_velocity_comparison(self, t_list, pos_list, theoretical_vel_list):
+        """
+        绘制理论速度和差分速度的比较图
+        """
+        comparison = self.compare_velocities(t_list, pos_list, theoretical_vel_list)
+        
+        plt.figure(figsize=(12, 10))
+        
+        # 速度比较
+        plt.subplot(3, 1, 1)
+        plt.plot(comparison['time'], comparison['theoretical_velocity'], 'b-', 
+                linewidth=2, label='Theoretical Velocity')
+        plt.plot(comparison['time'], comparison['differential_velocity'], 'r--', 
+                linewidth=1.5, label='Differential Velocity')
+        plt.xlabel('time [s]')
+        plt.ylabel('vel [a.u./s]')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.title('Theoretical Velocity vs Differential Velocity')
+        
+        # 绝对误差
+        plt.subplot(3, 1, 2)
+        plt.plot(comparison['time'], comparison['absolute_errors'], 'g-', 
+                linewidth=1.5, label='Absolute Error')
+        plt.axhline(comparison['average_absolute_error'], color='orange', 
+                linestyle='--', alpha=0.7, label=f'Average Error: {comparison["average_absolute_error"]:.6f}')
+        plt.xlabel('time [s]')
+        plt.ylabel('Absolute Error [a.u./s]')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.title('Speed Absolute Error')
+        
+        # 相对误差
+        plt.subplot(3, 1, 3)
+        plt.plot(comparison['time'], comparison['relative_errors_percent'], 'm-', 
+                linewidth=1.5, label='Relative Error [%]')
+        plt.axhline(comparison['average_relative_error_percent'], color='red', 
+                linestyle='--', alpha=0.7, label=f'average vel: {comparison["average_relative_error_percent"]:.2f}%')
+        plt.xlabel('time [s]')
+        plt.ylabel('Relative Error [%]')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.title('Speed Relative Error')
+        
+        plt.tight_layout()
+        plt.show()
+        
+        # 打印统计信息
+        print(f"速度比较统计:")
+        print(f"最大绝对误差: {comparison['max_absolute_error']:.6f}")
+        print(f"平均绝对误差: {comparison['average_absolute_error']:.6f}")
+        print(f"最大相对误差: {comparison['max_relative_error_percent']:.2f}%")
+        print(f"平均相对误差: {comparison['average_relative_error_percent']:.2f}%")
+        
+        return comparison
+
 # ======================== 测试用例（反向运动重点验证） ========================
 if __name__ == "__main__":
     # 输入v0_in=2 → 校准后v0=-2（因为q1<q0，dir_pos=-1），位置从15→5
@@ -345,7 +498,7 @@ if __name__ == "__main__":
 
     # constrain = [0,5.77351,0,10,10,-10,10,-10,30,-30] # 非常极限的情况
     # constrain = [0,5.77351,0,10,10,-10,10,-10,30,-30] # 非常极限的情况
-    constrain = [0.087266, 0.087266, 0.0, 0.0, 50,-50,100,-100,3000,-3000]  # 有恒速段 正向
+    constrain = [0, 10, 0.0, 0.0, 5,-5,10,-10,30,-30]  # 有恒速段 正向
 
     planner = DoubleSCurveTrajectoryGenerator(7, constrain[0], constrain[1], constrain[2], constrain[3], \
                     constrain[4], constrain[5], constrain[6], constrain[7], constrain[8], constrain[9])
@@ -356,11 +509,16 @@ if __name__ == "__main__":
         print("Trajectory is valid.")
     else:
         print("Trajectory is not valid.")
-    t_list, pos, vel, acc, jerk = planner.get_profile(0.001,2)
+    t_list, pos, vel, acc, jerk = planner.get_profile(0.001)
     print(f"pos {len(pos)}")
+        # 计算并比较速度
+    comparison_result = planner.compare_velocities(t_list, pos, vel)
+
+    # 或者直接绘制比较图
+    planner.plot_velocity_comparison(t_list, pos, vel)
     # t_list1, pos1, vel1, acc1, jerk1 = planner.get_profile(0.01,3)
     # for i in range(len(t_list)):
     #     print(f"t = {t_list[i]:.4f}, q = {pos[i]:.4f}, v = {vel[i]:.4f}, a = {acc[i]:.4f}, j = {jerk[i]:.4f}")
-    planner.plot_all_trajectories(t_list, pos, vel, acc, jerk)
+    # planner.plot_all_trajectories(t_list, pos, vel, acc, jerk)
 
 

@@ -3,9 +3,13 @@ import numpy as np
 import sys
 sys.path.append("/home/kuanwang/workspace/mujoco_ws/util/")
 from plot import DataCollector
+import mymath.translation as translation
 sys.path.append("/home/kuanwang/workspace/mujoco_ws/script/mujoco")
 from mujoco_framework import ConfigBase, MuJoCoBase
 import numpy as np
+import modern_robotics as mr
+
+
 # Franka 示教拖动
 model_directory =  "/home/kuanwang/workspace/mujoco_ws/mjctrl/kuka_iiwa_14/scene.xml"
 model_directory = "/home/kuanwang/workspace/mujoco_ws/mjctrl/franka_emika_panda/scene_tau.xml"
@@ -43,6 +47,8 @@ integration_dt: float = 1.0
 
 # Whether to enable gravity compensation.
 gravity_compensation: bool = True
+
+
 
 class MuJoCoFranka(MuJoCoBase):
     def __init__(self, cfg: ConfigFRanka):
@@ -90,17 +96,53 @@ class MuJoCoFranka(MuJoCoBase):
         self.vel_temp = np.zeros(3)  # Temporary array for velocity conversion
         self.plotter = DataCollector()   
         self.ref_rot = self.data.site(self.site_id).xmat.copy()
+        self.cur_pose = self.data.site(self.site_id).xpos.copy()
+        self.cur_rot = self.data.site(self.site_id).xmat.copy()
+        self.tar_pose = self.data.mocap_pos[self.mocap_id].copy()
+        self.tar_rot_quat = self.data.mocap_quat[self.mocap_id].copy()
+        self.tar_rot = np.zeros(9)
+        self.cur_q = self.data.qpos[self.dof_ids]
+        self.cur_qvel = self.data.qvel[self.dof_ids]
     def pre_step(self):
             # Spatial velocity (aka twist).
-            dx = self.data.mocap_pos[self.mocap_id] - self.data.site(self.site_id).xpos
-            self.twist[:3] = Kpos * dx / integration_dt
-            
+            self.cur_pose = self.data.site(self.site_id).xpos.copy()
+            self.cur_rot = self.data.site(self.site_id).xmat.copy()
+            self.tar_pose = self.data.mocap_pos[self.mocap_id].copy()
+            self.tar_rot_quat = self.data.mocap_quat[self.mocap_id].copy()
+            mujoco.mju_quat2Mat(self.tar_rot, self.tar_rot_quat)
+            self.cur_q = self.data.qpos[self.dof_ids]
+            self.cur_qvel = self.data.qvel[self.dof_ids]
+
+            dx = self.tar_pose.copy() - self.cur_pose.copy()
+            # 修复：正确初始化numpy数组
             # Convert rotation matrix to quaternion for site
-            mujoco.mju_mat2Quat(self.site_quat, self.data.site(self.site_id).xmat)
-            mujoco.mju_negQuat(self.site_quat_conj, self.site_quat)
-            mujoco.mju_mulQuat(self.error_quat, self.data.mocap_quat[self.mocap_id], self.site_quat_conj)
-            mujoco.mju_quat2Vel(self.twist[3:], self.error_quat, 1.0)
+            # mujoco.mju_mat2Quat(self.site_quat, self.cur_rot)
+            translation.mju_mat2Quat(self.site_quat, self.cur_rot.copy())
+            # print(f"\nsite_quat: {self.site_quat} my_quat: {my_quat}")
+
+            # mujoco.mju_negQuat(self.site_quat_conj, self.site_quat)
+            translation.mju_negQuat(self.site_quat_conj, self.site_quat)
+            # print(f"site_quat_conj: {self.site_quat_conj} my_quat_conj: {my_quat_conj}")
+
+            # mujoco.mju_mulQuat(self.error_quat, self.tar_rot_quat, self.site_quat_conj)
+            translation.mju_mulQuat(self.error_quat, self.tar_rot_quat, self.site_quat_conj)
+            # print(f"error_quat: {self.error_quat} my_error_quat: {my_error_quat}")
+
+            # mujoco.mju_quat2Vel(self.twist[3:], self.error_quat, 1.0)
+            translation.mju_quat2Vel(self.twist[3:], self.error_quat, 1.0)
+            # print(f"self.twist[3:]: {self.twist[3:]} my_twist: {my_twist}")
+
+            trans_cur = translation.xmat_xpos_to_pose_matrix(self.cur_rot, self.cur_pose)
+            trans_target = translation.xmat_xpos_to_pose_matrix(self.tar_rot, self.tar_pose)
+            Vs = np.dot(mr.Adjoint(trans_cur), mr.se3ToVec(mr.MatrixLog6(np.dot(mr.TransInv(trans_cur), trans_target))))
+            my_Vs = np.zeros(6)
+            my_Vs[:3] = Kpos * dx / integration_dt
+            my_Vs[3:] = Kori * Vs[:3] / integration_dt
+            self.twist[:3] = Kpos * dx / integration_dt
             self.twist[3:] *= Kori / integration_dt
+            print(f"my_Vs: {my_Vs}\n twist: {self.twist}")
+
+
             # self.twist = np.zeros(6)
             # Compute end-effector Jacobian.
             mujoco.mj_jacSite(self.model, self.data, self.jac[:3], self.jac[3:], self.site_id)
@@ -114,11 +156,11 @@ class MuJoCoFranka(MuJoCoBase):
                 Mx = np.linalg.pinv(Mx_inv, rcond=1e-2)
 
             # Compute generalized forces.
-            tau = self.jac.T @ Mx @ (self.Kp * self.twist - self.Kd * (self.jac @ self.data.qvel[self.dof_ids]))
+            tau = self.jac.T @ Mx @ (self.Kp * my_Vs - self.Kd * (self.jac @ self.cur_qvel))
 
             # Add joint task in nullspace.
             Jbar = self.M_inv @ self.jac.T @ Mx
-            ddq = Kp_null * (self.q0 - self.data.qpos[self.dof_ids]) - self.Kd_null * self.data.qvel[self.dof_ids]
+            ddq = Kp_null * (self.q0 - self.cur_q) - self.Kd_null * self.cur_qvel
             tau += (np.eye(self.model.nv) - self.jac.T @ Jbar.T) @ ddq
 
             # Add gravity compensation.
@@ -128,6 +170,8 @@ class MuJoCoFranka(MuJoCoBase):
             # Set the control signal and step the simulation.
             # 转矩裁剪，防止失控
             np.clip(tau, *self.model.actuator_ctrlrange.T, out=tau)
+            self.plotter.add_data(self.data.time, my_Vs.copy(), self.twist.copy())
+
             self.data.ctrl[self.actuator_ids] = tau[self.actuator_ids]
             
     def post_step(self):
@@ -157,9 +201,10 @@ class MuJoCoFranka(MuJoCoBase):
         target_pose[4] = np.arcsin(2*(self.mocap_quat_temp[0]*self.mocap_quat_temp[2] - self.mocap_quat_temp[3]*self.mocap_quat_temp[1]))
         target_pose[5] = np.arctan2(2*(self.mocap_quat_temp[0]*self.mocap_quat_temp[3] + self.mocap_quat_temp[1]*self.mocap_quat_temp[2]),  
                                     1-2*(self.mocap_quat_temp[2]**2 + self.mocap_quat_temp[3]**2))
-        self.plotter.add_data(self.data.time, actual_pose, target_pose)
+        # self.plotter.add_data(self.data.time, actual_pose, target_pose)
 
 if __name__ == "__main__":
     config = ConfigFRanka()
     Control = MuJoCoFranka(config)
     Control.simulation()
+    Control.plot(save_to_file=True, filename="simulation_results.png")
