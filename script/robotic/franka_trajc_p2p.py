@@ -1,17 +1,14 @@
-import mujoco
 import numpy as np
 import sys
 sys.path.append("/home/kuanwang/workspace/mujoco_ws/util/")
 from plot import DataCollector, read_trajectory_data
 sys.path.append("/home/kuanwang/workspace/mujoco_ws/script/mujoco")
 from mujoco_framework import ConfigBase, MuJoCoBase
-import numpy as np
 sys.path.append("/home/kuanwang/workspace/mujoco_ws/script/trajctory")
 from wkdoubleS_trajectory_mulity import DoubleSCurveTrajectoryGenerator
-import time
 
 epsilon = 1e-6
-# Franka 示教拖动
+# Franka 点到点轨迹规划
 model_directory = "/home/kuanwang/workspace/mujoco_ws/mjctrl/franka_emika_panda/scene.xml"
 
 

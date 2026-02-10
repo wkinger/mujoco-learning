@@ -25,7 +25,7 @@ def read_trajectory_data(file_path):
                 velocities.append(joint_vel)
     
     return np.array(positions), np.array(velocities)
-
+# 绘制单轴轨迹和速度曲线 N是
 def plot_joint_trajectories(positions, velocities, dt, N, show_range=None):
     """
     绘制关节位置和速度曲线

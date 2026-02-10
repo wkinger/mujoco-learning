@@ -2,17 +2,16 @@ import mujoco
 import numpy as np
 import sys
 sys.path.append("/home/kuanwang/workspace/mujoco_ws/util/")
-from plot import DataCollector, read_trajectory_data
+from plotter import DataCollector, read_trajectory_data
 sys.path.append("/home/kuanwang/workspace/mujoco_ws/script/mujoco")
 from mujoco_framework import ConfigBase, MuJoCoBase
-import numpy as np
 
 import time
 sys.path.append("/home/kuanwang/workspace/yaocao/teleop20251212/oculus_reader/robot/")
 from meta_quest import MetaQuest, print_vr_data
 import scipy.spatial.transform as st
 epsilon = 1e-6
-# Franka 示教拖动
+# Franka 示教拖动  力矩控制
 model_directory = "/home/kuanwang/workspace/mujoco_ws/mjctrl/franka_emika_panda/scene_tau.xml"
 
 # 使用metaquest Oculus2 进行遥操作

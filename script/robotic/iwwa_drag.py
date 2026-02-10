@@ -2,11 +2,10 @@ import mujoco
 import numpy as np
 import sys
 sys.path.append("/home/kuanwang/workspace/mujoco_ws/util/")
-from plot import DataCollector
+from plotter import DataCollector
 import mymath.translation as translation
 sys.path.append("/home/kuanwang/workspace/mujoco_ws/script/mujoco")
 from mujoco_framework import ConfigBase, MuJoCoBase
-import numpy as np
 import modern_robotics as mr
 
 
@@ -21,6 +20,8 @@ class ConfigFRanka(ConfigBase):
         sim_time = 100
         sim_mode = "dyn"  # "dyn","kin" 选择是运动学仿真还是动力学仿真 
         save_to_file = True
+        site_name = "attachment_site" # End-effector site we wish to control.
+        key_name = "home" # home位置
 
     class Render(ConfigBase.Render):
         is_render = True        # 是否打开渲染
@@ -60,9 +61,6 @@ class MuJoCoFranka(MuJoCoBase):
         self.Kd = np.concatenate([damping_pos, damping_ori], axis=0)
         self.Kd_null = damping_ratio * 2 * np.sqrt(Kp_null)
 
-        # End-effector site we wish to control.
-        site_name = "attachment_site"
-        self.site_id = self.model.site(site_name).id
 
         # Get the dof and actuator ids for the joints we wish to control.
         joint_names = [
@@ -71,11 +69,6 @@ class MuJoCoFranka(MuJoCoBase):
         ]
         self.dof_ids = np.array([self.model.joint(name).id for name in joint_names])
         self.actuator_ids = np.array([self.model.actuator(name).id for name in joint_names])
-
-        # Initial joint configuration saved as a keyframe in the XML file.
-        key_name = "home"
-        self.key_id = self.model.key(key_name).id
-        self.q0 = self.model.key(key_name).qpos
 
         # Mocap body we will control with our mouse.
         mocap_name = "target"

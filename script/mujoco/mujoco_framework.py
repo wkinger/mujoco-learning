@@ -10,8 +10,8 @@ class ConfigBase:
         sim_time = 30
         sim_mode = "kin"  # "dyn", 选择是运动学仿真还是动力学仿真 
         save_to_file = True
-        site_name = "attachment_site" # End-effector site we wish to control.
-        key_name = "home" # home位置
+        site_name = None # End-effector site we wish to control.
+        key_name = None # home位置
 
     class Render:
         is_render = True        # 是否打开渲染
@@ -31,18 +31,23 @@ class MuJoCoBase:
         self._is_render = cfg.Render.is_render
         self._render_fps = cfg.Render.render_fps
         # Initial joint configuration saved as a keyframe in the XML file.
-        self.key_id = self.model.key(cfg.Sim.key_name).id
-        self.q0 = self.model.key(cfg.Sim.key_name).qpos
+        if cfg.Sim.key_name is not None:
+            self.key_id = self.model.key(cfg.Sim.key_name).id
+            self.q0 = self.model.key(cfg.Sim.key_name).qpos
+            # 初始化机械臂位置，非常重要
+            mj.mj_resetDataKeyframe(self.model, self.data, self.key_id)
         # End-effector site we wish to control.
-        self.site_id = self.model.site(cfg.Sim.site_name).id
-        # 初始化机械臂位置，非常重要
-        mj.mj_resetDataKeyframe(self.model, self.data, self.key_id)
+        if cfg.Sim.site_name is not None:
+            self.site_id = self.model.site(cfg.Sim.site_name).id
+
         if self._is_render:
             self.viewer = mjv.launch_passive(model=self.model, data=self.data, 
                                             show_left_ui=cfg.Render.show_left_ui,
                                             show_right_ui=cfg.Render.show_right_ui,
                                             key_callback=self.keyboard_cb)
-            self.viewer.opt.frame = mj.mjtFrame.mjFRAME_WORLD
+            # 显示world坐标轴
+            # self.viewer.opt.frame = mj.mjtFrame.mjFRAME_WORLD
+            self.viewer.opt.frame = mj.mjtFrame.mjFRAME_BODY | mj.mjtFrame.mjFRAME_SITE
             mj.mjv_defaultFreeCamera(self.model, self.viewer.cam)
             
     # 分离 “物理仿真频率” 和 “视觉渲染频率

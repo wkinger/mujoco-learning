@@ -5,8 +5,7 @@ sys.path.append("/home/kuanwang/workspace/mujoco_ws/util/")
 from plot import DataCollector
 sys.path.append("/home/kuanwang/workspace/mujoco_ws/script/mujoco")
 from mujoco_framework import ConfigBase, MuJoCoBase
-import numpy as np
-# Franka 示教拖动
+# Franka 迭代逆解+位置控制
 model_directory = "/home/kuanwang/workspace/mujoco_ws/mjctrl/franka_emika_panda/scene.xml"
 
 

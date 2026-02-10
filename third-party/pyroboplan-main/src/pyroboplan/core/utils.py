@@ -50,6 +50,122 @@ def check_collisions_at_state(
     )
     return np.any([cr.isCollision() for cr in collision_data.collisionResults])
 
+def get_joint_limits(model, padding=0.0):
+    """
+    Returns a random state that is within the model's joint limits.
+
+    Parameters
+    ----------
+        model : `pinocchio.Model`
+            The model from which to generate a random state.
+        padding : float or array-like, optional
+            The padding to use around the sampled joint limits.
+
+    Returns
+    -------
+        array-like
+            A set of randomly generated joint variables.
+    """
+    for i in range(model.nq):
+        print(f"{model.names[i+1]}: {model.lowerPositionLimit[i]}, {model.upperPositionLimit[i]}")
+        
+    
+
+"""增强版碰撞检测工具，支持打印碰撞连杆名称"""
+
+import copy
+import numpy as np
+import pinocchio
+
+
+def check_collisions_at_state_with_names(
+    model,
+    collision_model,
+    q,
+    data=None,
+    collision_data=None,
+    distance_padding=0.0,
+    verbose=True
+):
+    """
+    检查指定关节配置是否无碰撞，并打印碰撞的连杆名称
+    
+    Parameters
+    ----------
+        model : `pinocchio.Model`
+            The model to use for collision checking.
+        collision_model : `pinocchio.Model`
+            The collision model to use for collision checking.
+        q : array-like
+            The joint configuration of the model.
+        data : `pinocchio.Data`, optional
+            The model data to use for collision checking. If None, data is created automatically.
+        collision_data : `pinocchio.GeometryData`, optional
+            The collision_model data to use for collision checking. If None, data is created automatically.
+        distance_padding : float, optional
+            The padding, in meters, to use for distance to nearest collision.
+        verbose : bool, optional
+            If True, print collision information including link names.
+
+    Returns
+    -------
+        bool
+            True if there are any collisions or minimum distance violations, otherwise False.
+    """
+    if not data:
+        data = model.createData()
+    if not collision_data:
+        collision_data = collision_model.createData()
+    stop_at_first_collision = False  # 设置为False以获取所有碰撞信息
+
+    for elem in collision_data.collisionRequests:
+        elem.security_margin = distance_padding
+
+    pinocchio.computeCollisions(
+        model, data, collision_model, collision_data, q, stop_at_first_collision
+    )
+    
+    has_collision = False
+    collision_pairs = []
+    
+    for idx, cr in enumerate(collision_data.collisionResults):
+        if cr.isCollision():
+            has_collision = True
+            # 获取碰撞对
+            collision_pair = collision_model.collisionPairs[idx]
+            
+            # 获取碰撞几何体对象
+            geom1 = collision_model.geometryObjects[collision_pair.first]
+            geom2 = collision_model.geometryObjects[collision_pair.second]
+            
+            # 获取连杆名称
+            link1_name = _get_link_name_from_geometry(model, geom1)
+            link2_name = _get_link_name_from_geometry(model, geom2)
+            
+            collision_pairs.append((link1_name, link2_name))
+            
+            # if verbose:
+            #     print(f"碰撞检测到: {link1_name} 与 {link2_name} 发生碰撞")
+            #     print(f"  几何体1: {geom1.name}")
+            #     print(f"  几何体2: {geom2.name}")
+            #     print(f"  碰撞对索引: {idx}")
+            #     print("-" * 50)
+    
+    if verbose and has_collision:
+        print(f"总共检测到 {len(collision_pairs)} 个碰撞对")
+    elif verbose and not has_collision:
+        print("无碰撞检测到")
+    
+    return has_collision, collision_pairs
+
+
+def _get_link_name_from_geometry(model, geometry_obj):
+    """从几何体对象获取连杆名称"""
+    if geometry_obj.parentFrame < model.nframes:
+        frame = model.frames[geometry_obj.parentFrame]
+        return frame.name
+    else:
+        return f"未知连杆_{geometry_obj.parentFrame}"
 
 def get_minimum_distance_at_state(
     model, collision_model, q, data=None, collision_data=None
