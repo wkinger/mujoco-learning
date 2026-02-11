@@ -7,7 +7,7 @@ import pinocchio
 from plyfile import PlyData
 
 from ..core.utils import set_collisions
-from .utils import get_example_models_folder
+from .utils import get_example_models_folder, DualArmVisualizer
 
 
 def load_models(use_sphere_collisions=False):
@@ -21,9 +21,13 @@ def load_models(use_sphere_collisions=False):
     """
     resource_path ="/home/kuanwang/workspace/model_files"
     models_folder = resource_path
-    urdf_filepath = "/home/kuanwang/workspace/model_files/dual_arm/dual_arm.urdf"
-
-    return pinocchio.buildModelsFromUrdf(urdf_filepath, package_dirs=models_folder)
+    xacro_path = "/home/kuanwang/workspace/model_files/dual_arm/dual.urdf.xacro"
+    # 1. Preprocess xacro file using xacro command
+    parser = DualArmVisualizer(xacro_path)
+    urdf_path = parser.preprocess_xacro_with_fixes(xacro_path)
+    # Start GUI control
+    # parser.run_gui()
+    return pinocchio.buildModelsFromUrdf(urdf_path, package_dirs=models_folder)
 
 
 def load_point_cloud(pointcloud_path=None, voxel_resolution=0.04):
@@ -69,7 +73,7 @@ def add_self_collisions(model, collision_model, srdf_filename=None):
             Path to the SRDF file describing the excluded collision pairs.
             If not specified, uses a default file included with the Panda model.
     """
-    srdf_filename = "/home/kuanwang/workspace/model_files/single_arm/bionic.srdf"
+    srdf_filename = "/home/kuanwang/workspace/model_files/dual_arm/dualarm.srdf"
 
     collision_model.addAllCollisionPairs()
     pinocchio.removeCollisionPairs(model, collision_model, srdf_filename)

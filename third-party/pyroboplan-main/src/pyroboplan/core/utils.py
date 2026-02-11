@@ -66,10 +66,10 @@ def get_joint_limits(model, padding=0.0):
         array-like
             A set of randomly generated joint variables.
     """
+    print(f"Joint limits for model {model.name}:")
     for i in range(model.nq):
         print(f"{model.names[i+1]}: {model.lowerPositionLimit[i]}, {model.upperPositionLimit[i]}")
-        
-    
+   
 
 """增强版碰撞检测工具，支持打印碰撞连杆名称"""
 
